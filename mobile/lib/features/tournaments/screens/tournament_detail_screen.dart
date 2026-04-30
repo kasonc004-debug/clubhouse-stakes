@@ -600,25 +600,39 @@ class _TeamButtons extends StatelessWidget {
   const _TeamButtons({required this.tournament, required this.joinState});
 
   @override
-  Widget build(BuildContext context) => Column(children: [
-        _FilledButton(
-          icon: Icons.group_add_outlined,
-          label: 'CREATE A TEAM',
-          onTap: joinState.isLoading
-              ? null
-              : () => context
-                  .push('/tournament/${tournament.id}/create-team'),
-        ),
-        const SizedBox(height: 10),
-        _OutlineButton(
-          icon: Icons.group_outlined,
-          label: 'JOIN EXISTING TEAM',
-          onTap: joinState.isLoading
-              ? null
-              : () =>
-                  context.push('/tournament/${tournament.id}/join-team'),
-        ),
-      ]);
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Primary: register with partner
+          _FilledButton(
+            icon: Icons.group_add_outlined,
+            label: 'REGISTER AS A TEAM',
+            onTap: joinState.isLoading
+                ? null
+                : () => context.push('/tournament/${tournament.id}/create-team'),
+          ),
+          const SizedBox(height: 10),
+          // Secondary: join a team your partner already created
+          _OutlineButton(
+            icon: Icons.group_outlined,
+            label: 'JOIN AN EXISTING TEAM',
+            onTap: joinState.isLoading
+                ? null
+                : () => context.push('/tournament/${tournament.id}/join-team'),
+          ),
+          const SizedBox(height: 10),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              'Already have a partner? Register together. Or join a team your partner created.',
+              style: TextStyle(
+                  fontSize: 11,
+                  color: AppColors.textSecondary,
+                  height: 1.4),
+            ),
+          ),
+        ],
+      );
 }
 
 // ── Register button ───────────────────────────────────────────────────────────

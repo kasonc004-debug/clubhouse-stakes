@@ -23,6 +23,7 @@ class _CreateTournamentScreenState extends ConsumerState<CreateTournamentScreen>
   final _descCtrl     = TextEditingController();
   final _feeCtrl      = TextEditingController();
   final _maxCtrl      = TextEditingController();
+  final _skinsFeeCtrl = TextEditingController();
   String _format      = 'individual';
   String _feePer      = 'player';
   DateTime _date      = DateTime.now().add(const Duration(days: 14));
@@ -33,6 +34,7 @@ class _CreateTournamentScreenState extends ConsumerState<CreateTournamentScreen>
   void dispose() {
     _nameCtrl.dispose(); _cityCtrl.dispose(); _courseCtrl.dispose();
     _descCtrl.dispose(); _feeCtrl.dispose(); _maxCtrl.dispose();
+    _skinsFeeCtrl.dispose();
     super.dispose();
   }
 
@@ -50,6 +52,7 @@ class _CreateTournamentScreenState extends ConsumerState<CreateTournamentScreen>
     if (!_formKey.currentState!.validate()) return;
     setState(() { _loading = true; _error = null; });
     try {
+      final skinsFee = double.tryParse(_skinsFeeCtrl.text) ?? 0;
       await ref.read(apiClientProvider).post(
         ApiConstants.adminTournaments,
         data: {
@@ -62,6 +65,7 @@ class _CreateTournamentScreenState extends ConsumerState<CreateTournamentScreen>
           'fee_per':     _feePer,
           'course_name': _courseCtrl.text.trim().isEmpty ? null : _courseCtrl.text.trim(),
           'description': _descCtrl.text.trim().isEmpty  ? null : _descCtrl.text.trim(),
+          'skins_fee':   skinsFee > 0 ? skinsFee : 0,
         },
       );
       if (mounted) {
@@ -165,6 +169,27 @@ class _CreateTournamentScreenState extends ConsumerState<CreateTournamentScreen>
                   return null;
                 })),
             ]),
+            const SizedBox(height: 14),
+
+            const SizedBox(height: 14),
+
+            // Skins fee (optional)
+            TextFormField(
+              controller: _skinsFeeCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Skins Entry Fee (optional)',
+                prefixText: '\$',
+                prefixIcon: Icon(Icons.casino_outlined),
+                helperText: 'Leave blank or 0 to disable skins game',
+              ),
+              validator: (v) {
+                if (v == null || v.isEmpty) return null;
+                if (double.tryParse(v) == null) return 'Invalid number';
+                return null;
+              },
+            ),
+
             const SizedBox(height: 14),
 
             // Fee per

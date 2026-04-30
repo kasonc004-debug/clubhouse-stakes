@@ -9,15 +9,16 @@ async function createTournament(req, res) {
   const {
     name, city, date, format, sign_up_fee,
     max_players, fee_per = 'player', course_name, description,
+    skins_fee = 0,
   } = req.body;
 
   try {
     const { rows } = await db.query(
       `INSERT INTO tournaments
-         (name, city, date, format, sign_up_fee, max_players, fee_per, course_name, description, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         (name, city, date, format, sign_up_fee, max_players, fee_per, course_name, description, skins_fee, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        RETURNING *`,
-      [name, city, date, format, sign_up_fee, max_players, fee_per, course_name, description, req.user.id]
+      [name, city, date, format, sign_up_fee, max_players, fee_per, course_name, description, skins_fee || 0, req.user.id]
     );
     res.status(201).json({ tournament: rows[0] });
   } catch (err) {

@@ -1,17 +1,21 @@
 const db = require('../config/database');
 
 // POST /api/teams/create
+// body: { tournament_id, name?, partner_id? }
+// When partner_id is supplied both players are registered atomically.
 async function createTeam(req, res) {
-  const { tournament_id, name } = req.body;
+  const { tournament_id, name, partner_id } = req.body;
   const userId = req.user.id;
 
   if (!tournament_id) return res.status(422).json({ error: 'tournament_id is required' });
+  if (partner_id && partner_id === userId)
+    return res.status(422).json({ error: 'You cannot add yourself as a partner' });
 
   const client = await db.getClient();
   try {
     await client.query('BEGIN');
 
-    // Validate tournament is fourball and open
+    // Validate tournament
     const { rows: tRows } = await client.query(
       `SELECT t.*, COUNT(e.id)::int AS entry_count
        FROM tournaments t
@@ -23,14 +27,33 @@ async function createTeam(req, res) {
     const t = tRows[0];
     if (t.format !== 'fourball')         throw { status: 400, message: 'Teams only available in fourball format' };
     if (t.status !== 'upcoming')         throw { status: 400, message: 'Tournament is not open' };
-    if (t.entry_count >= t.max_players)  throw { status: 400, message: 'Tournament is full' };
 
-    // Check user not already in a team for this tournament
-    const already = await client.query(
-      `SELECT e.id FROM entries e WHERE e.user_id = $1 AND e.tournament_id = $2`,
+    // Check capacity — need room for both players when partner is provided
+    const spotsNeeded = partner_id ? 2 : 1;
+    if (t.entry_count + spotsNeeded > t.max_players)
+      throw { status: 400, message: 'Not enough spots left in the tournament' };
+
+    // Check creator not already entered
+    const creatorCheck = await client.query(
+      `SELECT id FROM entries WHERE user_id = $1 AND tournament_id = $2`,
       [userId, tournament_id]
     );
-    if (already.rows.length) throw { status: 409, message: 'Already entered this tournament' };
+    if (creatorCheck.rows.length) throw { status: 409, message: 'You are already entered in this tournament' };
+
+    // Validate and check partner when provided
+    if (partner_id) {
+      const partnerUser = await client.query(
+        `SELECT id, name FROM users WHERE id = $1`, [partner_id]
+      );
+      if (!partnerUser.rows.length) throw { status: 404, message: 'Partner account not found' };
+
+      const partnerEntry = await client.query(
+        `SELECT id FROM entries WHERE user_id = $1 AND tournament_id = $2`,
+        [partner_id, tournament_id]
+      );
+      if (partnerEntry.rows.length)
+        throw { status: 409, message: `${partnerUser.rows[0].name} is already entered in this tournament` };
+    }
 
     // Create team
     const { rows: teamRows } = await client.query(
@@ -39,21 +62,42 @@ async function createTeam(req, res) {
     );
     const team = teamRows[0];
 
-    // Add creator as first member
+    // Register creator
     await client.query(
-      `INSERT INTO team_members (team_id, user_id) VALUES ($1, $2)`,
-      [team.id, userId]
+      `INSERT INTO team_members (team_id, user_id) VALUES ($1, $2)`, [team.id, userId]
     );
-
-    // Create entry for creator
     await client.query(
-      `INSERT INTO entries (user_id, tournament_id, team_id, payment_status)
-       VALUES ($1, $2, $3, 'pending')`,
+      `INSERT INTO entries (user_id, tournament_id, team_id, payment_status) VALUES ($1, $2, $3, 'paid')`,
       [userId, tournament_id, team.id]
     );
 
+    // Register partner atomically when provided
+    if (partner_id) {
+      await client.query(
+        `INSERT INTO team_members (team_id, user_id) VALUES ($1, $2)`, [team.id, partner_id]
+      );
+      await client.query(
+        `INSERT INTO entries (user_id, tournament_id, team_id, payment_status) VALUES ($1, $2, $3, 'paid')`,
+        [partner_id, tournament_id, team.id]
+      );
+    }
+
     await client.query('COMMIT');
-    res.status(201).json({ team });
+
+    // Return team with member details
+    const { rows: fullTeam } = await db.query(
+      `SELECT t.id, t.tournament_id, t.name, t.created_at,
+              COUNT(tm.id)::int AS member_count,
+              json_agg(json_build_object('id', u.id, 'name', u.name, 'handicap', u.handicap)
+                ORDER BY tm.created_at) AS members
+       FROM teams t
+       LEFT JOIN team_members tm ON tm.team_id = t.id
+       LEFT JOIN users u ON u.id = tm.user_id
+       WHERE t.id = $1
+       GROUP BY t.id`,
+      [team.id]
+    );
+    res.status(201).json({ team: fullTeam[0] });
   } catch (err) {
     await client.query('ROLLBACK');
     if (err.status) return res.status(err.status).json({ error: err.message });

@@ -4,6 +4,20 @@ import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
 import '../models/leaderboard_model.dart';
 
+final skinsLeaderboardProvider = FutureProvider.family<SkinsData?, String>(
+  (ref, tournamentId) async {
+    final api = ref.read(apiClientProvider);
+    try {
+      final resp = await api.get(ApiConstants.skinsLeaderboard(tournamentId));
+      return SkinsData.fromJson(resp.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      // 404 = no skins game on this tournament
+      if (e.response?.statusCode == 404) return null;
+      throw ApiException.fromDio(e);
+    }
+  },
+);
+
 class LeaderboardData {
   final String format;
   final String status;

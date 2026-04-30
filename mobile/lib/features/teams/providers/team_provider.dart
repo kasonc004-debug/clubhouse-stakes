@@ -26,12 +26,17 @@ class CreateTeamNotifier extends StateNotifier<AsyncValue<TeamModel?>> {
   final ApiClient _api;
   CreateTeamNotifier(this._api) : super(const AsyncData(null));
 
-  Future<TeamModel?> create({required String tournamentId, String? name}) async {
+  Future<TeamModel?> create({
+    required String tournamentId,
+    String? name,
+    String? partnerId,
+  }) async {
     state = const AsyncLoading();
     try {
       final resp = await _api.post(ApiConstants.createTeam, data: {
         'tournament_id': tournamentId,
         if (name != null && name.isNotEmpty) 'name': name,
+        if (partnerId != null) 'partner_id': partnerId,
       });
       final team = TeamModel.fromJson(resp.data['team'] as Map<String, dynamic>);
       state = AsyncData(team);

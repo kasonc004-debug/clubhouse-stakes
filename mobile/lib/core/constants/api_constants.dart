@@ -1,7 +1,12 @@
 class ApiConstants {
   ApiConstants._();
 
-  static const String baseUrl = 'http://localhost:3000/api';
+  // Override at build time with --dart-define=API_BASE_URL=https://api.clubhousestakes.com/api
+  // Defaults to localhost for local development.
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://localhost:3000/api',
+  );
 
   // Auth
   static const String signup    = '/auth/signup';
@@ -29,7 +34,8 @@ class ApiConstants {
   static String updateHoleScore(String tournamentId) => '/scores/$tournamentId/hole';
 
   // Leaderboard
-  static String leaderboard(String tournamentId) => '/leaderboard/$tournamentId';
+  static String leaderboard(String tournamentId)      => '/leaderboard/$tournamentId';
+  static String skinsLeaderboard(String tournamentId) => '/leaderboard/$tournamentId/skins';
 
   // Users
   static const String userSearch              = '/users/search';

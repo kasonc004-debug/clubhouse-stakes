@@ -6,6 +6,9 @@ import '../../../core/widgets/loading_overlay.dart';
 import '../models/leaderboard_model.dart';
 import '../providers/leaderboard_provider.dart';
 
+// Skin pot color
+const _kGold = Color(0xFFC9A84C);
+
 // 10 s when active, 30 s otherwise — provider tells us the status
 const _kLiveInterval     = Duration(seconds: 10);
 const _kStandardInterval = Duration(seconds: 30);
@@ -18,9 +21,12 @@ class LeaderboardScreen extends ConsumerStatefulWidget {
   ConsumerState<LeaderboardScreen> createState() => _LeaderboardScreenState();
 }
 
-class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
-  Timer? _timer;
-  DateTime _lastRefreshed = DateTime.now();
+class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen>
+    with SingleTickerProviderStateMixin {
+  Timer?          _timer;
+  DateTime        _lastRefreshed = DateTime.now();
+  TabController?  _tabController;
+  bool            _hasSkins = false;
 
   @override
   void initState() {
@@ -30,19 +36,29 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
 
   void _scheduleTimer() {
     _timer?.cancel();
-    // Start with live interval; once data loads we keep it
     _timer = Timer.periodic(_kLiveInterval, (_) => _refresh());
   }
 
   void _refresh() {
     ref.invalidate(leaderboardProvider(widget.tournamentId));
+    ref.invalidate(skinsLeaderboardProvider(widget.tournamentId));
     if (mounted) setState(() => _lastRefreshed = DateTime.now());
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _tabController?.dispose();
     super.dispose();
+  }
+
+  void _ensureTabController(bool hasSkins) {
+    if (_hasSkins == hasSkins) return;
+    _hasSkins = hasSkins;
+    _tabController?.dispose();
+    _tabController = hasSkins
+        ? TabController(length: 2, vsync: this)
+        : null;
   }
 
   String get _agoLabel {
@@ -53,8 +69,13 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final async = ref.watch(leaderboardProvider(widget.tournamentId));
-    final isActive = async.valueOrNull?.status == 'active';
+    final async      = ref.watch(leaderboardProvider(widget.tournamentId));
+    final skinsAsync = ref.watch(skinsLeaderboardProvider(widget.tournamentId));
+    final isActive   = async.valueOrNull?.status == 'active';
+
+    final skinsData = skinsAsync.valueOrNull;
+    final hasSkins  = skinsData != null && skinsData.players.isNotEmpty;
+    _ensureTabController(hasSkins);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -70,93 +91,114 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
             ),
             child: SafeArea(
               bottom: false,
-              child: Padding(
-                padding:
-                    const EdgeInsets.fromLTRB(8, 8, 16, 16),
-                child: Row(children: [
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back_ios_new,
-                        color: Colors.white, size: 18),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(children: [
-                            if (isActive) ...[
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: AppColors.error,
-                                  borderRadius:
-                                      BorderRadius.circular(20),
+              child: Column(children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 8, 16, 12),
+                  child: Row(children: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back_ios_new,
+                          color: Colors.white, size: 18),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(children: [
+                              if (isActive) ...[
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.error,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: const Text('● LIVE',
+                                      style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: 1)),
                                 ),
-                                child: const Text('● LIVE',
-                                    style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w800,
-                                        letterSpacing: 1)),
+                                const SizedBox(width: 8),
+                              ],
+                              Text(
+                                'Updated $_agoLabel',
+                                style: const TextStyle(
+                                    color: Colors.white60, fontSize: 11),
                               ),
-                              const SizedBox(width: 8),
-                            ],
-                            Text(
-                              'Updated $_agoLabel',
-                              style: const TextStyle(
-                                  color: Colors.white60,
-                                  fontSize: 11),
-                            ),
+                            ]),
+                            const Text('LEADERBOARD',
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w900)),
                           ]),
-                          const Text('LEADERBOARD',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w900)),
-                        ]),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.refresh, color: Colors.white70),
+                      onPressed: _refresh,
+                    ),
+                  ]),
+                ),
+                // Tabs (only when skins game exists)
+                if (hasSkins && _tabController != null)
+                  TabBar(
+                    controller: _tabController,
+                    indicatorColor: _kGold,
+                    indicatorWeight: 3,
+                    labelColor: Colors.white,
+                    unselectedLabelColor: Colors.white54,
+                    labelStyle: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1),
+                    tabs: const [
+                      Tab(text: 'MAIN'),
+                      Tab(text: '🃏 SKINS'),
+                    ],
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.refresh,
-                        color: Colors.white70),
-                    onPressed: _refresh,
-                  ),
-                ]),
-              ),
+              ]),
             ),
           ),
 
           // ── Body ──────────────────────────────────────────────
           Expanded(
-            child: async.when(
-              loading: () => const Center(
-                  child: CircularProgressIndicator(
-                      color: AppColors.primary)),
-              error: (e, _) => ErrorCard(
-                  message: e.toString(), onRetry: _refresh),
-              data: (data) {
-                if (data.individual.isEmpty &&
-                    data.fourball.isEmpty) {
-                  return const EmptyState(
-                    icon: Icons.leaderboard_outlined,
-                    title: 'No scores yet',
-                    subtitle:
-                        'Scores will appear as players enter each hole.',
-                  );
-                }
-                if (data.format == 'individual') {
-                  return _IndividualLeaderboard(
-                      entries: data.individual,
-                      isActive: isActive);
-                }
-                return _FourballLeaderboard(
-                    entries: data.fourball, isActive: isActive);
-              },
-            ),
+            child: hasSkins && _tabController != null
+                ? TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _mainLeaderboardBody(async, isActive),
+                      _SkinsLeaderboard(data: skinsData!, isActive: isActive),
+                    ],
+                  )
+                : _mainLeaderboardBody(async, isActive),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _mainLeaderboardBody(AsyncValue<LeaderboardData> async, bool isActive) {
+    return async.when(
+      loading: () => const Center(
+          child: CircularProgressIndicator(color: AppColors.primary)),
+      error: (e, _) =>
+          ErrorCard(message: e.toString(), onRetry: _refresh),
+      data: (data) {
+        if (data.individual.isEmpty && data.fourball.isEmpty) {
+          return const EmptyState(
+            icon: Icons.leaderboard_outlined,
+            title: 'No scores yet',
+            subtitle: 'Scores will appear as players enter each hole.',
+          );
+        }
+        if (data.format == 'individual') {
+          return _IndividualLeaderboard(
+              entries: data.individual, isActive: isActive);
+        }
+        return _FourballLeaderboard(
+            entries: data.fourball, isActive: isActive);
+      },
     );
   }
 }
@@ -691,6 +733,320 @@ class _FourballRow extends StatelessWidget {
               ]),
         ),
       ),
+    );
+  }
+}
+
+// ── Skins leaderboard ─────────────────────────────────────────────────────────
+
+class _SkinsLeaderboard extends StatelessWidget {
+  final SkinsData data;
+  final bool      isActive;
+  const _SkinsLeaderboard({required this.data, required this.isActive});
+
+  @override
+  Widget build(BuildContext context) {
+    final summary = data.summary;
+    return CustomScrollView(
+      slivers: [
+        // Pot summary strip
+        SliverToBoxAdapter(child: _SkinsPotStrip(data: data)),
+
+        // Payout summary when complete
+        if (summary != null && summary.isComplete && summary.skinsWon.isNotEmpty)
+          SliverToBoxAdapter(child: _SkinsPayoutSummary(summary: summary)),
+
+        // Column header
+        SliverToBoxAdapter(
+          child: Container(
+            color: const Color(0xFF1B3D2C),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: Row(children: [
+              const SizedBox(width: 38,
+                  child: Text('HOLE', style: TextStyle(color: Colors.white70, fontSize: 10, letterSpacing: 1))),
+              const SizedBox(width: 60,
+                  child: Center(child: Text('POT', style: TextStyle(color: _kGold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)))),
+              const Expanded(
+                  child: Text('STATUS', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1))),
+            ]),
+          ),
+        ),
+
+        // Hole rows
+        SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, i) {
+              final hole = data.holes[i];
+              return Column(children: [
+                _SkinsHoleRow(hole: hole),
+                if (i < data.holes.length - 1)
+                  const Divider(height: 1, color: AppColors.divider),
+              ]);
+            },
+            childCount: data.holes.length,
+          ),
+        ),
+
+        // Bottom padding
+        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+      ],
+    );
+  }
+}
+
+class _SkinsPotStrip extends StatelessWidget {
+  final SkinsData data;
+  const _SkinsPotStrip({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _kGold.withOpacity(0.3), width: 1.5),
+      ),
+      child: Row(children: [
+        _SkinsStat(label: 'ENTRANTS',  value: '${data.players.length}'),
+        _SkinsVDiv(),
+        _SkinsStat(label: 'ENTRY FEE', value: '\$${data.skinsFee.toStringAsFixed(0)}'),
+        _SkinsVDiv(),
+        _SkinsStat(label: 'TOTAL POT',
+            value: '\$${data.skinsPot.toStringAsFixed(0)}', gold: true),
+      ]),
+    );
+  }
+}
+
+class _SkinsStat extends StatelessWidget {
+  final String label, value;
+  final bool gold;
+  const _SkinsStat({required this.label, required this.value, this.gold = false});
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+      child: Column(children: [
+        Text(label, style: const TextStyle(
+            fontSize: 9, fontWeight: FontWeight.w700,
+            letterSpacing: 1.5, color: AppColors.textSecondary)),
+        const SizedBox(height: 4),
+        Text(value, style: TextStyle(
+            fontSize: 18, fontWeight: FontWeight.w900,
+            color: gold ? _kGold : AppColors.textPrimary)),
+      ]));
+}
+
+class _SkinsVDiv extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) =>
+      Container(height: 32, width: 1, color: AppColors.divider,
+          margin: const EdgeInsets.symmetric(horizontal: 8));
+}
+
+class _SkinsPayoutSummary extends StatelessWidget {
+  final SkinsSummary summary;
+  const _SkinsPayoutSummary({required this.summary});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.success.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.success.withOpacity(0.3)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('FINAL PAYOUTS',
+            style: TextStyle(
+                fontSize: 10, fontWeight: FontWeight.w800,
+                letterSpacing: 2, color: AppColors.success)),
+        const SizedBox(height: 10),
+        ...summary.skinsWon.map((w) => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(w.name,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+              Text(
+                'Holes ${w.holesWon.join(', ')} · ${w.holesWon.length} skin${w.holesWon.length == 1 ? '' : 's'}',
+                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+              ),
+            ])),
+            Text('\$${w.amount.toStringAsFixed(0)}',
+                style: const TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.success)),
+          ]),
+        )),
+        if (summary.carryoverHoles > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              '${summary.carryoverHoles} hole${summary.carryoverHoles == 1 ? '' : 's'} tied out — pot carries into next round',
+              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+            ),
+          ),
+      ]),
+    );
+  }
+}
+
+class _SkinsHoleRow extends StatelessWidget {
+  final SkinsHole hole;
+  const _SkinsHoleRow({required this.hole});
+
+  @override
+  Widget build(BuildContext context) {
+    final h = hole;
+
+    Color  statusColor;
+    Widget statusWidget;
+
+    switch (h.status) {
+      case 'won':
+        statusColor = AppColors.success;
+        statusWidget = Row(children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: AppColors.success.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              h.winner!.name,
+              style: const TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.success),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text('net ${h.winner!.netScore.toStringAsFixed(0)}',
+              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+        ]);
+
+      case 'tied':
+        statusColor = AppColors.warning;
+        final names = h.tiedPlayers.map((p) => p.name).join(' · ');
+        statusWidget = Row(children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: AppColors.warning.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Text('CARRY OVER',
+                style: TextStyle(
+                    fontSize: 10, fontWeight: FontWeight.w800,
+                    color: AppColors.warning, letterSpacing: 1)),
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(names,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+          ),
+        ]);
+
+      case 'leading':
+        statusColor = AppColors.primary;
+        statusWidget = Row(children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              h.leader!.name,
+              style: const TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primary),
+            ),
+          ),
+          const SizedBox(width: 6),
+          const Text('leading',
+              style: TextStyle(fontSize: 10, color: AppColors.textSecondary,
+                  fontStyle: FontStyle.italic)),
+        ]);
+
+      case 'provisional_tied':
+        statusColor = AppColors.textSecondary;
+        final names = h.tiedPlayers.map((p) => p.name).join(' · ');
+        statusWidget = Row(children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: AppColors.divider,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Text('TIED',
+                style: TextStyle(
+                    fontSize: 10, fontWeight: FontWeight.w700,
+                    color: AppColors.textSecondary, letterSpacing: 1)),
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(names,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary,
+                    fontStyle: FontStyle.italic)),
+          ),
+        ]);
+
+      default: // pending
+        statusColor = AppColors.divider;
+        statusWidget = const Text('—',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 14));
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+      child: Row(children: [
+        // Hole number badge
+        Container(
+          width: 30, height: 30,
+          decoration: BoxDecoration(
+            color: h.status == 'won'
+                ? AppColors.success.withOpacity(0.12)
+                : h.status == 'tied'
+                    ? AppColors.warning.withOpacity(0.10)
+                    : AppColors.surface,
+            shape: BoxShape.circle,
+            border: Border.all(color: statusColor.withOpacity(0.35)),
+          ),
+          child: Center(
+            child: Text('${h.hole}',
+                style: TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w800, color: statusColor)),
+          ),
+        ),
+        const SizedBox(width: 8),
+
+        // Pot column
+        SizedBox(
+          width: 52,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
+            Text('\$${h.pot.toStringAsFixed(0)}',
+                style: const TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.w900, color: _kGold)),
+            if (h.carryIn > 0)
+              Text('+${h.carryIn}',
+                  style: const TextStyle(fontSize: 9, color: _kGold)),
+          ]),
+        ),
+        const SizedBox(width: 8),
+
+        // Status
+        Expanded(child: statusWidget),
+
+        // Thru indicator
+        if (h.totalPlayers > 0 && !h.isPending)
+          Text(
+            '${h.playersIn}/${h.totalPlayers}',
+            style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
+          ),
+      ]),
     );
   }
 }
