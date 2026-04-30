@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Merge these keys into ios/Runner/Info.plist before building.
+  Required for App Store submission.
+-->
+<plist version="1.0">
+<dict>
+    <!-- Apple Sign-In entitlement (also add in Xcode Signing & Capabilities) -->
+    <key>NSUserActivityTypes</key>
+    <array>
+        <string>INSendMessageIntent</string>
+    </array>
+
+    <!-- Camera — profile picture upload -->
+    <key>NSCameraUsageDescription</key>
+    <string>Clubhouse Stakes uses your camera to set your profile picture.</string>
+
+    <!-- Photo Library -->
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Clubhouse Stakes accesses your photo library to set your profile picture.</string>
+
+    <!-- Privacy policy URL (required for App Store) -->
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
+
+    <!-- App Transport Security — allow localhost in debug builds -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoadsInWebContent</key>
+        <false/>
+        <!-- Remove NSExceptionDomains in production; localhost is for dev only -->
+        <key>NSExceptionDomains</key>
+        <dict>
+            <key>localhost</key>
+            <dict>
+                <key>NSExceptionAllowsInsecureHTTPLoads</key>
+                <true/>
+            </dict>
+        </dict>
+    </dict>
+</dict>
+</plist>

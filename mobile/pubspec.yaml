@@ -1,0 +1,59 @@
+name: clubhouse_stakes
+description: Skill-based golf tournament competition app
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management
+  flutter_riverpod: ^2.4.0
+  riverpod_annotation: ^2.3.0
+
+  # Navigation
+  go_router: ^12.1.0
+
+  # Networking
+  dio: ^5.3.3
+  pretty_dio_logger: ^1.3.1
+
+  # Secure storage (JWT in Keychain / Android Keystore)
+  flutter_secure_storage: ^9.0.0
+
+  # Apple Sign-In
+  sign_in_with_apple: ^5.0.0
+
+  # Image picker / profile picture
+  image_picker: ^1.0.4
+
+  # Utilities
+  intl: ^0.18.1
+  cached_network_image: ^3.3.0
+  shimmer: ^3.0.0
+
+  cupertino_icons: ^1.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  build_runner: ^2.4.6
+  riverpod_generator: ^2.3.3
+  json_serializable: ^6.7.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/icons/
+  fonts:
+    - family: ClubhouseDisplay
+      fonts:
+        - asset: assets/fonts/PlayfairDisplay-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/PlayfairDisplay-Regular.ttf
+          weight: 400
