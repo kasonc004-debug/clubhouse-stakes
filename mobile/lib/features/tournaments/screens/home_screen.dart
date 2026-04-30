@@ -5,11 +5,11 @@ import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/widgets/loading_overlay.dart';
 import '../../auth/providers/auth_provider.dart';
-import '../../players/screens/global_leaderboard_screen.dart';
 import '../providers/tournament_provider.dart';
 import '../models/tournament_model.dart';
 import '../../../core/widgets/clubhouse_logo.dart';
 
+// 0=UPCOMING  1=LIVE  2=MY EVENTS  3=PAST
 final _tabProvider        = StateProvider<int>((ref) => 0);
 final _cityFilterProvider = StateProvider<String?>((ref) => null);
 
@@ -18,11 +18,10 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user         = ref.watch(authProvider).user;
-    final tab          = ref.watch(_tabProvider);
-    final cityFilter   = ref.watch(_cityFilterProvider);
-    final effectiveCity = cityFilter ?? user?.city;
-    final firstName    = user?.name.split(' ').first ?? 'Golfer';
+    final user        = ref.watch(authProvider).user;
+    final tab         = ref.watch(_tabProvider);
+    final city        = ref.watch(_cityFilterProvider) ?? user?.city;
+    final firstName   = user?.name.split(' ').first ?? 'Golfer';
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -31,11 +30,13 @@ class HomeScreen extends ConsumerWidget {
           SliverToBoxAdapter(
             child: _HeroBanner(
               name: firstName,
-              effectiveCity: effectiveCity,
+              effectiveCity: city,
               onProfileTap: () => context.push('/profile'),
-              onCityTap: () => _showCityPicker(context, ref, effectiveCity),
-              onSearchTap: () => context.push('/search'),
-              onAdminTap: (user?.isAdmin ?? false) ? () => context.push('/admin') : null,
+              onCityTap:    () => _showCityPicker(context, ref, city),
+              onSearchTap:  () => context.push('/search'),
+              onAdminTap:   (user?.isAdmin ?? false)
+                  ? () => context.push('/admin')
+                  : null,
             ),
           ),
 
@@ -51,74 +52,43 @@ class HomeScreen extends ConsumerWidget {
 
           const SliverToBoxAdapter(child: SizedBox(height: 20)),
 
-          if (tab == 0)
-            ..._upcomingTab(ref, effectiveCity, context)
-          else if (tab == 1)
-            ..._myEventsTab(ref, context)
-          else
-            ..._leaderboardTab(),
+          if (tab == 0) ..._upcomingSliver(ref, city, context)
+          else if (tab == 1) ..._liveSliver(ref, context, user)
+          else if (tab == 2) ..._myEventsSliver(ref, context, user)
+          else ..._pastSliver(ref, context),
 
-          const SliverToBoxAdapter(child: SizedBox(height: 32)),
+          const SliverToBoxAdapter(child: SizedBox(height: 40)),
         ],
       ),
     );
   }
 
-  List<Widget> _upcomingTab(WidgetRef ref, String? city, BuildContext context) {
-    final tournamentsAsync = ref.watch(tournamentsProvider(city));
+  // ── Upcoming ────────────────────────────────────────────────
+  List<Widget> _upcomingSliver(
+      WidgetRef ref, String? city, BuildContext context) {
+    final async = ref.watch(tournamentsProvider(city));
     return [
-      SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'UPCOMING TOURNAMENTS',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.5,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              GestureDetector(
-                onTap: () => ref.invalidate(tournamentsProvider(city)),
-                child: const Icon(Icons.refresh_rounded,
-                    size: 20, color: AppColors.textSecondary),
-              ),
-            ],
-          ),
-        ),
-      ),
+      _sectionHeader('UPCOMING TOURNAMENTS', onRefresh: () =>
+          ref.invalidate(tournamentsProvider(city))),
       const SliverToBoxAdapter(child: SizedBox(height: 14)),
-      tournamentsAsync.when(
-        loading: () => const SliverFillRemaining(
-          child: Center(
-              child: CircularProgressIndicator(color: AppColors.primary))),
-        error: (e, _) => SliverToBoxAdapter(
-          child: ErrorCard(
-            message: e.toString(),
-            onRetry: () => ref.invalidate(tournamentsProvider(city)),
-          ),
-        ),
-        data: (tournaments) {
-          if (tournaments.isEmpty) {
-            return const SliverToBoxAdapter(
-              child: EmptyState(
-                icon: Icons.sports_golf,
-                title: 'No tournaments yet',
-                subtitle: 'Check back soon or switch cities.',
-              ),
+      async.when(
+        loading: () => _loadingSliver(),
+        error: (e, _) => _errorSliver(e, () => ref.invalidate(tournamentsProvider(city))),
+        data: (list) {
+          if (list.isEmpty) {
+            return _emptySliver(
+              icon: Icons.sports_golf,
+              title: 'No upcoming tournaments',
+              sub: 'Check back soon or switch cities.',
             );
           }
           return SliverList(
             delegate: SliverChildBuilderDelegate(
-              (context, i) => _MatchCard(
-                tournament: tournaments[i],
-                onTap: () => context.push('/tournament/${tournaments[i].id}'),
+              (_, i) => _TournamentCard(
+                tournament: list[i],
+                onTap: () => context.push('/tournament/${list[i].id}'),
               ),
-              childCount: tournaments.length,
+              childCount: list.length,
             ),
           );
         },
@@ -126,79 +96,45 @@ class HomeScreen extends ConsumerWidget {
     ];
   }
 
-  List<Widget> _leaderboardTab() => [
-    const SliverFillRemaining(
-      hasScrollBody: true,
-      child: GlobalLeaderboardTab(),
-    ),
-  ];
-
-  List<Widget> _myEventsTab(WidgetRef ref, BuildContext context) {
-    final myAsync = ref.watch(myTournamentsProvider);
+  // ── Live ─────────────────────────────────────────────────────
+  List<Widget> _liveSliver(
+      WidgetRef ref, BuildContext context, dynamic user) {
+    final async = ref.watch(activeTournamentsProvider);
     return [
-      SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'MY EVENTS',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.5,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              GestureDetector(
-                onTap: () => ref.invalidate(myTournamentsProvider),
-                child: const Icon(Icons.refresh_rounded,
-                    size: 20, color: AppColors.textSecondary),
-              ),
-            ],
-          ),
-        ),
-      ),
+      _sectionHeader('LIVE TOURNAMENTS', live: true,
+          onRefresh: () => ref.invalidate(activeTournamentsProvider)),
       const SliverToBoxAdapter(child: SizedBox(height: 14)),
-      myAsync.when(
-        loading: () => const SliverFillRemaining(
-          child: Center(
-              child: CircularProgressIndicator(color: AppColors.primary))),
-        error: (e, _) => SliverToBoxAdapter(
-          child: ErrorCard(
-            message: e.toString(),
-            onRetry: () => ref.invalidate(myTournamentsProvider),
-          ),
-        ),
-        data: (tournaments) {
-          if (tournaments.isEmpty) {
-            return const SliverToBoxAdapter(
-              child: EmptyState(
-                icon: Icons.calendar_today_outlined,
-                title: 'No events yet',
-                subtitle: 'Register for a tournament to see it here.',
-              ),
+      async.when(
+        loading: () => _loadingSliver(),
+        error: (e, _) =>
+            _errorSliver(e, () => ref.invalidate(activeTournamentsProvider)),
+        data: (list) {
+          if (list.isEmpty) {
+            return _emptySliver(
+              icon: Icons.radio_button_checked,
+              title: 'No live tournaments right now',
+              sub: 'Check the upcoming tab for what\'s next.',
             );
           }
           return SliverList(
             delegate: SliverChildBuilderDelegate(
-              (context, i) {
-                final t = tournaments[i];
-                final isActive = t.status == 'active';
-                return _MatchCard(
+              (_, i) {
+                final t = list[i];
+                final enrolled = t.isEnrolled;
+                return _LiveCard(
                   tournament: t,
-                  // Active tournaments go straight to scoring
-                  onTap: isActive
+                  enrolled: enrolled,
+                  onTap: enrolled
                       ? () => context.push('/tournament/${t.id}/score')
                       : () => context.push('/tournament/${t.id}'),
-                  enrolled: true,
-                  onScoreTap: isActive
+                  onLeaderboard: () =>
+                      context.push('/leaderboard/${t.id}'),
+                  onEnterScore: enrolled
                       ? () => context.push('/tournament/${t.id}/score')
                       : null,
                 );
               },
-              childCount: tournaments.length,
+              childCount: list.length,
             ),
           );
         },
@@ -206,11 +142,167 @@ class HomeScreen extends ConsumerWidget {
     ];
   }
 
+  // ── My Events ────────────────────────────────────────────────
+  List<Widget> _myEventsSliver(
+      WidgetRef ref, BuildContext context, dynamic user) {
+    if (user == null) {
+      return [
+        _emptySliver(
+          icon: Icons.lock_outline,
+          title: 'Sign in to see your events',
+          sub: '',
+        ),
+      ];
+    }
+    final async = ref.watch(myTournamentsProvider);
+    return [
+      _sectionHeader('MY EVENTS',
+          onRefresh: () => ref.invalidate(myTournamentsProvider)),
+      const SliverToBoxAdapter(child: SizedBox(height: 14)),
+      async.when(
+        loading: () => _loadingSliver(),
+        error: (e, _) =>
+            _errorSliver(e, () => ref.invalidate(myTournamentsProvider)),
+        data: (list) {
+          if (list.isEmpty) {
+            return _emptySliver(
+              icon: Icons.calendar_today_outlined,
+              title: 'No events yet',
+              sub: 'Register for a tournament to see it here.',
+            );
+          }
+          return SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (_, i) {
+                final t = list[i];
+                final isLive = t.status == 'active';
+                final isDone = t.status == 'completed';
+                return _MyEventCard(
+                  tournament: t,
+                  onTap: isLive
+                      ? () => context.push('/tournament/${t.id}/score')
+                      : () => context.push('/tournament/${t.id}'),
+                  onSecondaryTap: isLive
+                      ? () => context.push('/leaderboard/${t.id}')
+                      : isDone
+                          ? () => context.push('/leaderboard/${t.id}')
+                          : null,
+                  secondaryLabel: isLive
+                      ? 'VIEW LEADERBOARD'
+                      : isDone
+                          ? 'VIEW RESULTS'
+                          : null,
+                );
+              },
+              childCount: list.length,
+            ),
+          );
+        },
+      ),
+    ];
+  }
+
+  // ── Past ─────────────────────────────────────────────────────
+  List<Widget> _pastSliver(WidgetRef ref, BuildContext context) {
+    final async = ref.watch(pastTournamentsProvider);
+    return [
+      _sectionHeader('PAST TOURNAMENTS',
+          onRefresh: () => ref.invalidate(pastTournamentsProvider)),
+      const SliverToBoxAdapter(child: SizedBox(height: 14)),
+      async.when(
+        loading: () => _loadingSliver(),
+        error: (e, _) =>
+            _errorSliver(e, () => ref.invalidate(pastTournamentsProvider)),
+        data: (list) {
+          if (list.isEmpty) {
+            return _emptySliver(
+              icon: Icons.history,
+              title: 'No completed tournaments yet',
+              sub: '',
+            );
+          }
+          return SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (_, i) => _PastCard(
+                tournament: list[i],
+                onResults: () =>
+                    context.push('/leaderboard/${list[i].id}'),
+              ),
+              childCount: list.length,
+            ),
+          );
+        },
+      ),
+    ];
+  }
+
+  // ── Shared sliver helpers ─────────────────────────────────────
+  SliverToBoxAdapter _sectionHeader(String title,
+      {bool live = false, required VoidCallback onRefresh}) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Row(
+          children: [
+            if (live) ...[
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.error,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text('● LIVE',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1)),
+              ),
+              const SizedBox(width: 10),
+            ],
+            Expanded(
+              child: Text(title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.5,
+                    color: AppColors.textPrimary,
+                  )),
+            ),
+            GestureDetector(
+              onTap: onRefresh,
+              child: const Icon(Icons.refresh_rounded,
+                  size: 20, color: AppColors.textSecondary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _loadingSliver() => const SliverFillRemaining(
+    child: Center(
+        child: CircularProgressIndicator(color: AppColors.primary)),
+  );
+
+  Widget _errorSliver(Object e, VoidCallback retry) => SliverToBoxAdapter(
+    child: ErrorCard(message: e.toString(), onRetry: retry),
+  );
+
+  Widget _emptySliver(
+          {required IconData icon,
+          required String title,
+          required String sub}) =>
+      SliverToBoxAdapter(
+        child: EmptyState(icon: icon, title: title, subtitle: sub),
+      );
+
   void _showCityPicker(
       BuildContext context, WidgetRef ref, String? current) {
-    final cities = [
+    const cities = [
       'Austin', 'Dallas', 'Houston', 'San Antonio',
-      'Scottsdale', 'Denver', 'Nashville',
+      'Kansas City', 'Scottsdale', 'Denver', 'Nashville',
     ];
     showModalBottomSheet(
       context: context,
@@ -225,21 +317,20 @@ class HomeScreen extends ConsumerWidget {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: AppColors.divider,
-              borderRadius: BorderRadius.circular(2),
-            ),
+                color: AppColors.divider,
+                borderRadius: BorderRadius.circular(2)),
           ),
           const SizedBox(height: 16),
           const Text('SELECT CITY',
               style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 2,
-                color: AppColors.textPrimary,
-              )),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 2,
+                  color: AppColors.textPrimary)),
           const Divider(height: 24),
           ListTile(
-            leading: const Icon(Icons.public, color: AppColors.primary),
+            leading:
+                const Icon(Icons.public, color: AppColors.primary),
             title: const Text('All Cities',
                 style: TextStyle(fontWeight: FontWeight.w600)),
             selected: current == null,
@@ -249,16 +340,15 @@ class HomeScreen extends ConsumerWidget {
               Navigator.pop(context);
             },
           ),
-          ...cities.map((city) => ListTile(
+          ...cities.map((c) => ListTile(
                 leading: const Icon(Icons.location_city_outlined,
                     color: AppColors.textSecondary),
-                title: Text(city,
-                    style:
-                        const TextStyle(fontWeight: FontWeight.w500)),
-                selected: current == city,
+                title: Text(c,
+                    style: const TextStyle(fontWeight: FontWeight.w500)),
+                selected: current == c,
                 selectedColor: AppColors.primary,
                 onTap: () {
-                  ref.read(_cityFilterProvider.notifier).state = city;
+                  ref.read(_cityFilterProvider.notifier).state = c;
                   Navigator.pop(context);
                 },
               )),
@@ -269,16 +359,75 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-// ── Hero Banner ──────────────────────────────────────────────────────────────
+// ── Tab row ───────────────────────────────────────────────────────────────────
+class _TabRow extends StatelessWidget {
+  final int selected;
+  final ValueChanged<int> onTap;
+  const _TabRow({required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    const tabs = ['UPCOMING', 'LIVE', 'MY EVENTS', 'PAST'];
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: List.generate(tabs.length, (i) {
+          final sel = i == selected;
+          final isLive = i == 1;
+          return Padding(
+            padding: EdgeInsets.only(right: i < tabs.length - 1 ? 10 : 0),
+            child: GestureDetector(
+              onTap: () => onTap(i),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 20, vertical: 11),
+                decoration: BoxDecoration(
+                  color: sel
+                      ? (isLive ? AppColors.error : const Color(0xFF1B3D2C))
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(
+                    color: sel
+                        ? (isLive ? AppColors.error : const Color(0xFF1B3D2C))
+                        : AppColors.divider,
+                    width: 1.5,
+                  ),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  if (isLive && !sel) ...[
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: const BoxDecoration(
+                          color: AppColors.error,
+                          shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  Text(tabs[i],
+                      style: TextStyle(
+                        color: sel ? Colors.white : AppColors.textSecondary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                      )),
+                ]),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+}
+
+// ── Hero Banner ───────────────────────────────────────────────────────────────
 class _HeroBanner extends StatelessWidget {
   final String name;
   final String? effectiveCity;
-  final VoidCallback onProfileTap;
-  final VoidCallback onCityTap;
+  final VoidCallback onProfileTap, onCityTap, onSearchTap;
   final VoidCallback? onAdminTap;
-
-  final VoidCallback onSearchTap;
-
   const _HeroBanner({
     required this.name,
     required this.effectiveCity,
@@ -296,11 +445,7 @@ class _HeroBanner extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF1B3D2C),
-            Color(0xFF2A5940),
-            Color(0xFF3D7055),
-          ],
+          colors: [Color(0xFF1B3D2C), Color(0xFF2A5940), Color(0xFF3D7055)],
           stops: [0.0, 0.55, 1.0],
         ),
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
@@ -308,11 +453,9 @@ class _HeroBanner extends StatelessWidget {
       child: Stack(
         children: [
           Positioned(
-            top: -40,
-            right: -30,
+            top: -40, right: -30,
             child: Container(
-              width: 180,
-              height: 180,
+              width: 180, height: 180,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: Colors.white.withOpacity(0.05),
@@ -320,11 +463,9 @@ class _HeroBanner extends StatelessWidget {
             ),
           ),
           Positioned(
-            bottom: 20,
-            right: 40,
+            bottom: 20, right: 40,
             child: Container(
-              width: 100,
-              height: 100,
+              width: 100, height: 100,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: Colors.white.withOpacity(0.04),
@@ -340,7 +481,6 @@ class _HeroBanner extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // Logo
                       const _InlineLogo(),
                       Row(children: [
                         IconButton(
@@ -359,13 +499,12 @@ class _HeroBanner extends StatelessWidget {
                         GestureDetector(
                           onTap: onProfileTap,
                           child: Container(
-                            width: 38,
-                            height: 38,
+                            width: 38, height: 38,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               color: Colors.white.withOpacity(0.15),
-                              border:
-                                  Border.all(color: Colors.white30, width: 2),
+                              border: Border.all(
+                                  color: Colors.white30, width: 2),
                             ),
                             child: const Icon(Icons.person,
                                 color: Colors.white, size: 20),
@@ -375,15 +514,13 @@ class _HeroBanner extends StatelessWidget {
                     ],
                   ),
                   const Spacer(),
-                  Text(
-                    'HELLO',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 3,
-                    ),
-                  ),
+                  Text('HELLO',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.6),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 3,
+                      )),
                   Text(
                     '${name.toUpperCase()}!',
                     style: const TextStyle(
@@ -401,14 +538,10 @@ class _HeroBanner extends StatelessWidget {
                       const Icon(Icons.location_on_outlined,
                           color: Color(0xFFC9A84C), size: 14),
                       const SizedBox(width: 5),
-                      Text(
-                        effectiveCity ?? 'All Cities',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
+                      Text(effectiveCity ?? 'All Cities',
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 13,
+                              fontWeight: FontWeight.w500)),
                       const SizedBox(width: 3),
                       const Icon(Icons.keyboard_arrow_down,
                           color: Colors.white60, size: 16),
@@ -424,70 +557,45 @@ class _HeroBanner extends StatelessWidget {
   }
 }
 
-// ── Tab Row ──────────────────────────────────────────────────────────────────
-class _TabRow extends StatelessWidget {
-  final int selected;
-  final ValueChanged<int> onTap;
-
-  const _TabRow({required this.selected, required this.onTap});
+// ── Inline logo ───────────────────────────────────────────────────────────────
+class _InlineLogo extends StatelessWidget {
+  const _InlineLogo();
 
   @override
-  Widget build(BuildContext context) {
-    const tabs = ['UPCOMING', 'MY EVENTS', 'LEADERS'];
-    return Row(
-      children: List.generate(tabs.length, (i) {
-        final isSelected = i == selected;
-        return Padding(
-          padding: EdgeInsets.only(right: i < tabs.length - 1 ? 10 : 0),
-          child: GestureDetector(
-            onTap: () => onTap(i),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 22, vertical: 11),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? const Color(0xFF1B3D2C)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(30),
-                border: Border.all(
-                  color: isSelected
-                      ? const Color(0xFF1B3D2C)
-                      : AppColors.divider,
-                  width: 1.5,
-                ),
-              ),
-              child: Text(
-                tabs[i],
-                style: TextStyle(
-                  color:
-                      isSelected ? Colors.white : AppColors.textSecondary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.5,
-                ),
-              ),
-            ),
-          ),
-        );
-      }),
-    );
-  }
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(Icons.emoji_events_rounded,
+          color: const Color(0xFFC9A84C), size: 26),
+      const SizedBox(width: 8),
+      RichText(
+        text: const TextSpan(children: [
+          TextSpan(
+              text: 'CLUBHOUSE',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.5)),
+          TextSpan(text: ' '),
+          TextSpan(
+              text: 'STAKES',
+              style: TextStyle(
+                  color: Color(0xFFC9A84C),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.5)),
+        ]),
+      ),
+    ],
+  );
 }
 
-// ── Match Card ───────────────────────────────────────────────────────────────
-class _MatchCard extends StatelessWidget {
+// ── Generic upcoming tournament card ─────────────────────────────────────────
+class _TournamentCard extends StatelessWidget {
   final TournamentModel tournament;
   final VoidCallback onTap;
-  final VoidCallback? onScoreTap;
-  final bool enrolled;
-
-  const _MatchCard({
-    required this.tournament,
-    required this.onTap,
-    this.onScoreTap,
-    this.enrolled = false,
-  });
+  const _TournamentCard({required this.tournament, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -501,227 +609,587 @@ class _MatchCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(18),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 12,
+                offset: const Offset(0, 4)),
           ],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Green header
-            Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF1B3D2C), Color(0xFF3D7055)],
-                ),
-                borderRadius:
-                    BorderRadius.vertical(top: Radius.circular(18)),
-              ),
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 18, vertical: 14),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (t.courseName != null)
-                          Text(
-                            t.courseName!.toUpperCase(),
-                            style: const TextStyle(
-                              color: Color(0xFFC9A84C),
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 1.5,
-                            ),
-                          ),
-                        Text(
-                          t.name,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.3,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (enrolled)
-                    Container(
-                      margin: const EdgeInsets.only(right: 8),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFC9A84C).withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                            color: const Color(0xFFC9A84C), width: 1),
-                      ),
-                      child: const Text(
-                        'ENROLLED',
-                        style: TextStyle(
-                          color: Color(0xFFC9A84C),
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1,
-                        ),
-                      ),
-                    ),
-                  _FormatBadge(format: t.format),
-                ],
-              ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // Green header
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                  colors: [Color(0xFF1B3D2C), Color(0xFF3D7055)]),
+              borderRadius:
+                  BorderRadius.vertical(top: Radius.circular(18)),
             ),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            child: Row(children: [
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (t.courseName != null)
+                        Text(t.courseName!.toUpperCase(),
+                            style: const TextStyle(
+                                color: Color(0xFFC9A84C),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 1.5)),
+                      Text(t.name,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                    ]),
+              ),
+              _FormatBadge(format: t.format),
+            ]),
+          ),
 
-            // Details
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
-              child: Column(
+          // Details
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+            child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(children: [
-                    _InfoPill(
-                      icon: Icons.calendar_today_outlined,
-                      label: DateFormat('MMM d, yyyy').format(t.date),
-                    ),
+                    _Pill(Icons.calendar_today_outlined,
+                        DateFormat('MMM d, yyyy').format(t.date)),
                     const SizedBox(width: 10),
-                    _InfoPill(
-                      icon: Icons.location_on_outlined,
-                      label: t.city,
-                    ),
+                    _Pill(Icons.location_on_outlined, t.city),
                   ]),
                   const SizedBox(height: 14),
                   Row(children: [
                     Expanded(
-                      child: _StatBox(
-                        label: 'ENTRY',
-                        value: '\$${t.signUpFee.toStringAsFixed(0)}',
-                        sub: 'per ${t.feePer}',
-                      ),
-                    ),
+                        child: _StatBox('ENTRY',
+                            '\$${t.signUpFee.toStringAsFixed(0)}',
+                            'per ${t.feePer}')),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: _StatBox(
-                        label: 'PURSE',
-                        value: '\$${t.purse.toStringAsFixed(0)}',
-                        sub: 'total',
-                        accent: true,
-                      ),
-                    ),
+                        child: _StatBox(
+                            'PURSE', '\$${t.purse.toStringAsFixed(0)}', 'total',
+                            accent: true)),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: _StatBox(
-                        label: 'SPOTS',
-                        value: '${t.spotsLeft}',
-                        sub: 'remaining',
-                        warn: t.isFull,
-                      ),
-                    ),
+                        child: _StatBox('SPOTS', '${t.spotsLeft}', 'remaining',
+                            warn: t.isFull)),
                   ]),
                   const SizedBox(height: 12),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _StatusChip(status: t.status),
-                      const Row(children: [
-                        Text('View details',
-                            style: TextStyle(
-                              color: Color(0xFF1B3D2C),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            )),
-                        SizedBox(width: 4),
-                        Icon(Icons.arrow_forward_ios,
-                            size: 11, color: Color(0xFF1B3D2C)),
-                      ]),
-                    ],
-                  ),
-                  // Enter score CTA when tournament is active
-                  if (onScoreTap != null) ...[
-                    const SizedBox(height: 12),
-                    GestureDetector(
-                      onTap: onScoreTap,
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF1B3D2C), Color(0xFF3D7055)],
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.sports_golf, color: Colors.white, size: 16),
-                            SizedBox(width: 8),
-                            Text(
-                              'ENTER SCORE',
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _StatusChip(status: t.status),
+                        const Row(children: [
+                          Text('View details',
                               style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 1,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
+                                  color: Color(0xFF1B3D2C),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600)),
+                          SizedBox(width: 4),
+                          Icon(Icons.arrow_forward_ios,
+                              size: 11, color: Color(0xFF1B3D2C)),
+                        ]),
+                      ]),
+                ]),
+          ),
+        ]),
       ),
     );
   }
 }
 
-class _InfoPill extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  const _InfoPill({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: AppColors.textSecondary),
-          const SizedBox(width: 4),
-          Text(label,
-              style: const TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              )),
-        ],
-      );
-}
-
-class _StatBox extends StatelessWidget {
-  final String label;
-  final String value;
-  final String sub;
-  final bool accent;
-  final bool warn;
-
-  const _StatBox({
-    required this.label,
-    required this.value,
-    required this.sub,
-    this.accent = false,
-    this.warn = false,
+// ── Live tournament card ───────────────────────────────────────────────────────
+class _LiveCard extends StatelessWidget {
+  final TournamentModel tournament;
+  final bool enrolled;
+  final VoidCallback onTap, onLeaderboard;
+  final VoidCallback? onEnterScore;
+  const _LiveCard({
+    required this.tournament,
+    required this.enrolled,
+    required this.onTap,
+    required this.onLeaderboard,
+    this.onEnterScore,
   });
 
   @override
   Widget build(BuildContext context) {
-    final valueColor = warn
+    final t = tournament;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.error.withOpacity(0.25), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+              color: AppColors.error.withOpacity(0.08),
+              blurRadius: 16,
+              offset: const Offset(0, 4)),
+        ],
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Header with LIVE badge
+        GestureDetector(
+          onTap: onTap,
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                  colors: [Color(0xFF1B3D2C), Color(0xFF3D7055)]),
+              borderRadius:
+                  BorderRadius.vertical(top: Radius.circular(16)),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            child: Row(children: [
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (t.courseName != null)
+                        Text(t.courseName!.toUpperCase(),
+                            style: const TextStyle(
+                                color: Color(0xFFC9A84C),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 1.5)),
+                      Text(t.name,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                    ]),
+              ),
+              // Live badge
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppColors.error,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text('● LIVE',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1)),
+              ),
+            ]),
+          ),
+        ),
+
+        // Info row
+        GestureDetector(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+            child: Row(children: [
+              _Pill(Icons.calendar_today_outlined,
+                  DateFormat('MMM d, yyyy').format(t.date)),
+              const SizedBox(width: 10),
+              _Pill(Icons.location_on_outlined, t.city),
+              const Spacer(),
+              _Pill(Icons.people_outlined, '${t.playerCount} players'),
+            ]),
+          ),
+        ),
+
+        // Action buttons
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
+          child: Row(children: [
+            // Leaderboard always available
+            Expanded(
+              child: _ActionButton(
+                label: 'LEADERBOARD',
+                icon: Icons.leaderboard_outlined,
+                outlined: true,
+                onTap: onLeaderboard,
+              ),
+            ),
+            if (onEnterScore != null) ...[
+              const SizedBox(width: 10),
+              Expanded(
+                child: _ActionButton(
+                  label: 'ENTER SCORE',
+                  icon: Icons.sports_golf,
+                  onTap: onEnterScore!,
+                ),
+              ),
+            ],
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+// ── My Event card ─────────────────────────────────────────────────────────────
+class _MyEventCard extends StatelessWidget {
+  final TournamentModel tournament;
+  final VoidCallback onTap;
+  final VoidCallback? onSecondaryTap;
+  final String? secondaryLabel;
+  const _MyEventCard({
+    required this.tournament,
+    required this.onTap,
+    this.onSecondaryTap,
+    this.secondaryLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = tournament;
+    final isLive = t.status == 'active';
+    final isDone = t.status == 'completed';
+
+    final headerGrad = isLive
+        ? const LinearGradient(
+            colors: [Color(0xFF7B1818), Color(0xFFB23030)])
+        : const LinearGradient(
+            colors: [Color(0xFF1B3D2C), Color(0xFF3D7055)]);
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: isLive
+            ? Border.all(
+                color: AppColors.error.withOpacity(0.3), width: 1.5)
+            : null,
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 12,
+              offset: const Offset(0, 4)),
+        ],
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Header
+        GestureDetector(
+          onTap: onTap,
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: headerGrad,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(18)),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            child: Row(children: [
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (t.courseName != null)
+                        Text(t.courseName!.toUpperCase(),
+                            style: const TextStyle(
+                                color: Color(0xFFC9A84C),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 1.5)),
+                      Text(t.name,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                    ]),
+              ),
+              if (isLive)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppColors.error,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text('● LIVE',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1)),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFC9A84C).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                        color: const Color(0xFFC9A84C), width: 1),
+                  ),
+                  child: Text(
+                    isDone ? 'COMPLETED' : 'ENROLLED',
+                    style: const TextStyle(
+                        color: Color(0xFFC9A84C),
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1),
+                  ),
+                ),
+            ]),
+          ),
+        ),
+
+        // Date / city / purse
+        GestureDetector(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    _Pill(Icons.calendar_today_outlined,
+                        DateFormat('MMM d, yyyy').format(t.date)),
+                    const SizedBox(width: 10),
+                    _Pill(Icons.location_on_outlined, t.city),
+                  ]),
+                  const SizedBox(height: 10),
+                  Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Purse: \$${t.purse.toStringAsFixed(0)}',
+                          style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFFC9A84C)),
+                        ),
+                        Text(
+                          '${t.playerCount} players',
+                          style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textSecondary),
+                        ),
+                      ]),
+                ]),
+          ),
+        ),
+
+        // Action buttons
+        if (isLive || isDone)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
+            child: Row(children: [
+              if (isLive)
+                Expanded(
+                  child: _ActionButton(
+                    label: 'ENTER SCORE',
+                    icon: Icons.sports_golf,
+                    onTap: onTap,
+                  ),
+                ),
+              if (isLive && onSecondaryTap != null)
+                const SizedBox(width: 10),
+              if (onSecondaryTap != null)
+                Expanded(
+                  child: _ActionButton(
+                    label: secondaryLabel ?? 'VIEW',
+                    icon: Icons.leaderboard_outlined,
+                    outlined: true,
+                    onTap: onSecondaryTap!,
+                  ),
+                ),
+            ]),
+          ),
+      ]),
+    );
+  }
+}
+
+// ── Past tournament card ───────────────────────────────────────────────────────
+class _PastCard extends StatelessWidget {
+  final TournamentModel tournament;
+  final VoidCallback onResults;
+  const _PastCard({required this.tournament, required this.onResults});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = tournament;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 3)),
+        ],
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Greyed header for completed
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                const Color(0xFF1B3D2C).withOpacity(0.6),
+                const Color(0xFF3D7055).withOpacity(0.6),
+              ],
+            ),
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(18)),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          child: Row(children: [
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (t.courseName != null)
+                      Text(t.courseName!.toUpperCase(),
+                          style: const TextStyle(
+                              color: Color(0xFFC9A84C),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 1.5)),
+                    Text(t.name,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                  ]),
+            ),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Text('COMPLETED',
+                  style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1)),
+            ),
+          ]),
+        ),
+
+        // Details + results button
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  _Pill(Icons.calendar_today_outlined,
+                      DateFormat('MMM d, yyyy').format(t.date)),
+                  const SizedBox(width: 10),
+                  _Pill(Icons.location_on_outlined, t.city),
+                ]),
+                const SizedBox(height: 10),
+                Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Purse: \$${t.purse.toStringAsFixed(0)}',
+                          style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFFC9A84C))),
+                      Text('${t.playerCount} players',
+                          style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textSecondary)),
+                    ]),
+                const SizedBox(height: 12),
+                _ActionButton(
+                  label: 'VIEW RESULTS',
+                  icon: Icons.emoji_events_outlined,
+                  outlined: true,
+                  onTap: onResults,
+                ),
+              ]),
+        ),
+      ]),
+    );
+  }
+}
+
+// ── Shared widgets ────────────────────────────────────────────────────────────
+class _ActionButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool outlined;
+  const _ActionButton({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    this.outlined = false,
+  });
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      height: 44,
+      decoration: BoxDecoration(
+        color: outlined ? Colors.transparent : const Color(0xFF1B3D2C),
+        borderRadius: BorderRadius.circular(12),
+        border: outlined
+            ? Border.all(color: const Color(0xFF1B3D2C), width: 1.5)
+            : null,
+      ),
+      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(icon,
+            color: outlined ? const Color(0xFF1B3D2C) : Colors.white,
+            size: 16),
+        const SizedBox(width: 7),
+        Text(label,
+            style: TextStyle(
+                color: outlined ? const Color(0xFF1B3D2C) : Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.8)),
+      ]),
+    ),
+  );
+}
+
+class _Pill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _Pill(this.icon, this.label);
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(icon, size: 13, color: AppColors.textSecondary),
+      const SizedBox(width: 4),
+      Text(label,
+          style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w500)),
+    ],
+  );
+}
+
+class _StatBox extends StatelessWidget {
+  final String label, value, sub;
+  final bool accent, warn;
+  const _StatBox(this.label, this.value, this.sub,
+      {this.accent = false, this.warn = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = warn
         ? AppColors.error
         : accent
             ? const Color(0xFFC9A84C)
@@ -734,75 +1202,23 @@ class _StatBox extends StatelessWidget {
             : AppColors.background,
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label,
-              style: const TextStyle(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label,
+            style: const TextStyle(
                 fontSize: 9,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 1,
-                color: AppColors.textSecondary,
-              )),
-          const SizedBox(height: 2),
-          Text(value,
-              style: TextStyle(
-                fontSize: 17,
+                color: AppColors.textSecondary)),
+        const SizedBox(height: 2),
+        Text(value,
+            style: TextStyle(
+                fontSize: 15,
                 fontWeight: FontWeight.w900,
-                color: valueColor,
-              )),
-          Text(sub,
-              style: const TextStyle(
-                fontSize: 10,
-                color: AppColors.textSecondary,
-              )),
-        ],
-      ),
-    );
-  }
-}
-
-class _InlineLogo extends StatelessWidget {
-  const _InlineLogo();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Icon(
-          Icons.emoji_events_rounded,
-          color: Color(0xFFC9A84C),
-          size: 26,
-        ),
-        const SizedBox(width: 8),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: const [
-            Text(
-              'CLUBHOUSE',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 2,
-                height: 1.1,
-              ),
-            ),
-            Text(
-              'STAKES',
-              style: TextStyle(
-                color: Color(0xFFC9A84C),
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 3,
-                height: 1.1,
-              ),
-            ),
-          ],
-        ),
-      ],
+                color: c)),
+        Text(sub,
+            style: const TextStyle(
+                fontSize: 9, color: AppColors.textSecondary)),
+      ]),
     );
   }
 }
@@ -812,23 +1228,21 @@ class _FormatBadge extends StatelessWidget {
   const _FormatBadge({required this.format});
 
   @override
-  Widget build(BuildContext context) {
-    final label = format == 'fourball' ? 'FOUR-BALL' : 'STROKE';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1,
-          )),
-    );
-  }
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    decoration: BoxDecoration(
+      color: Colors.white.withOpacity(0.15),
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Text(
+      format == 'fourball' ? '4-BALL' : 'STROKE',
+      style: const TextStyle(
+          color: Colors.white,
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1),
+    ),
+  );
 }
 
 class _StatusChip extends StatelessWidget {
@@ -837,24 +1251,22 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (fg, bg) = switch (status) {
-      'active'    => (AppColors.success, AppColors.success.withOpacity(0.12)),
+    final (color, bg) = switch (status) {
+      'active'    => (AppColors.error, AppColors.error.withOpacity(0.12)),
       'completed' => (AppColors.textSecondary, AppColors.divider),
-      _           => (const Color(0xFF1B3D2C), const Color(0xFF1B3D2C).withOpacity(0.1)),
+      _           => (const Color(0xFF1B3D2C),
+                      const Color(0xFF1B3D2C).withOpacity(0.08)),
     };
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-      decoration:
-          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
-      child: Text(
-        status.toUpperCase(),
-        style: TextStyle(
-          color: fg,
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1,
-        ),
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+          color: bg, borderRadius: BorderRadius.circular(20)),
+      child: Text(status.toUpperCase(),
+          style: TextStyle(
+              color: color,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1)),
     );
   }
 }
