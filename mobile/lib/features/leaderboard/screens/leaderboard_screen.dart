@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
@@ -5,21 +6,65 @@ import '../../../core/widgets/loading_overlay.dart';
 import '../models/leaderboard_model.dart';
 import '../providers/leaderboard_provider.dart';
 
-class LeaderboardScreen extends ConsumerWidget {
+const _kRefreshInterval = Duration(seconds: 30);
+
+class LeaderboardScreen extends ConsumerStatefulWidget {
   final String tournamentId;
   const LeaderboardScreen({super.key, required this.tournamentId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final leaderboardAsync = ref.watch(leaderboardProvider(tournamentId));
+  ConsumerState<LeaderboardScreen> createState() => _LeaderboardScreenState();
+}
+
+class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
+  Timer? _timer;
+  DateTime _lastRefreshed = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(_kRefreshInterval, (_) {
+      ref.invalidate(leaderboardProvider(widget.tournamentId));
+      setState(() => _lastRefreshed = DateTime.now());
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  String get _lastRefreshedLabel {
+    final diff = DateTime.now().difference(_lastRefreshed).inSeconds;
+    if (diff < 5) return 'just now';
+    return '${diff}s ago';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final leaderboardAsync = ref.watch(leaderboardProvider(widget.tournamentId));
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Leaderboard'),
         actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: Center(
+              child: Text(
+                'Live · $_lastRefreshedLabel',
+                style: const TextStyle(fontSize: 11, color: Colors.white70),
+              ),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => ref.invalidate(leaderboardProvider(tournamentId)),
+            tooltip: 'Refresh now',
+            onPressed: () {
+              ref.invalidate(leaderboardProvider(widget.tournamentId));
+              setState(() => _lastRefreshed = DateTime.now());
+            },
           ),
         ],
       ),
@@ -27,7 +72,7 @@ class LeaderboardScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
         error:   (e, _) => ErrorCard(
             message: e.toString(),
-            onRetry: () => ref.invalidate(leaderboardProvider(tournamentId))),
+            onRetry: () => ref.invalidate(leaderboardProvider(widget.tournamentId))),
         data: (data) {
           if (data.individual.isEmpty && data.fourball.isEmpty) {
             return const EmptyState(

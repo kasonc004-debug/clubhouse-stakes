@@ -17,5 +17,8 @@ router.post('/tournaments',
 
 router.patch('/tournaments/:id', ctrl.updateTournament);
 router.get('/tournaments/:id/participants', ctrl.adminGetParticipants);
+router.get('/tournaments/:id/financials', ctrl.getFinancials);
+router.patch('/tournaments/:id/financials', ctrl.updateFinancials);
+router.patch('/tournaments/:id/scores/:entryId', ctrl.adminUpdateScore);
 
 module.exports = router;

@@ -32,6 +32,20 @@ final tournamentDetailProvider = FutureProvider.family<TournamentModel, String>(
   },
 );
 
+// ── My enrolled tournaments ──────────────────────────────────
+final myTournamentsProvider = FutureProvider<List<TournamentModel>>(
+  (ref) async {
+    final api = ref.read(apiClientProvider);
+    try {
+      final resp = await api.get(ApiConstants.myTournaments);
+      final list = resp.data['tournaments'] as List;
+      return list.map((e) => TournamentModel.fromJson(e as Map<String, dynamic>)).toList();
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
+    }
+  },
+);
+
 // ── Join action state ────────────────────────────────────────
 class JoinTournamentNotifier extends StateNotifier<AsyncValue<void>> {
   final ApiClient _api;
@@ -53,4 +67,27 @@ class JoinTournamentNotifier extends StateNotifier<AsyncValue<void>> {
 final joinTournamentProvider =
     StateNotifierProvider.autoDispose<JoinTournamentNotifier, AsyncValue<void>>(
   (ref) => JoinTournamentNotifier(ref.read(apiClientProvider)),
+);
+
+// ── Enter skins action ───────────────────────────────────────
+class EnterSkinsNotifier extends StateNotifier<AsyncValue<void>> {
+  final ApiClient _api;
+  EnterSkinsNotifier(this._api) : super(const AsyncData(null));
+
+  Future<bool> enter(String tournamentId) async {
+    state = const AsyncLoading();
+    try {
+      await _api.post(ApiConstants.joinSkins(tournamentId));
+      state = const AsyncData(null);
+      return true;
+    } on DioException catch (e) {
+      state = AsyncError(ApiException.fromDio(e), StackTrace.current);
+      return false;
+    }
+  }
+}
+
+final enterSkinsProvider =
+    StateNotifierProvider.autoDispose<EnterSkinsNotifier, AsyncValue<void>>(
+  (ref) => EnterSkinsNotifier(ref.read(apiClientProvider)),
 );

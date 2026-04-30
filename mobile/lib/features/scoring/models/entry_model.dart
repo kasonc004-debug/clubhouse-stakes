@@ -29,10 +29,10 @@ class EntryModel {
     userId:        json['user_id'] as String,
     tournamentId:  json['tournament_id'] as String,
     teamId:        json['team_id'] as String?,
-    holeScores:    (json['hole_scores'] as List? ?? []).map((e) => (e as num).toInt()).toList(),
-    grossScore:    (json['gross_score'] as num?)?.toInt(),
-    netScore:      (json['net_score'] as num?)?.toDouble(),
+    holeScores:    (json['hole_scores'] as List? ?? []).map((e) => int.tryParse(e?.toString() ?? '0') ?? 0).toList(),
+    grossScore:    json['gross_score'] != null ? int.tryParse(json['gross_score'].toString()) : null,
+    netScore:      json['net_score'] != null ? double.tryParse(json['net_score'].toString()) : null,
     paymentStatus: json['payment_status'] as String? ?? 'pending',
-    handicap:      (json['handicap'] as num?)?.toDouble() ?? 0,
+    handicap:      double.tryParse(json['handicap']?.toString() ?? '0') ?? 0,
   );
 }

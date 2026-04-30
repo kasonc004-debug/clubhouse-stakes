@@ -2,12 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/network/api_client.dart';
 import '../../../core/widgets/cs_button.dart';
 import '../../../core/widgets/loading_overlay.dart';
 import '../../tournaments/providers/tournament_provider.dart';
 import '../../tournaments/models/tournament_model.dart';
-import 'create_tournament_screen.dart';
 
 class AdminScreen extends ConsumerWidget {
   const AdminScreen({super.key});
@@ -17,7 +15,11 @@ class AdminScreen extends ConsumerWidget {
     final tournamentsAsync = ref.watch(tournamentsProvider(null));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Admin Dashboard')),
+      appBar: AppBar(
+        title: const Text('Admin Dashboard'),
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/admin/create-tournament'),
         backgroundColor: AppColors.primary,
@@ -50,12 +52,24 @@ class _AdminTournamentTile extends StatelessWidget {
   final TournamentModel tournament;
   const _AdminTournamentTile({required this.tournament});
 
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'active':    return Colors.green;
+      case 'completed': return Colors.grey;
+      default:          return Colors.orange;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = tournament;
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: ListTile(
+        onTap: () => context.push(
+          '/admin/tournament/${t.id}',
+          extra: t.name,
+        ),
         leading: Container(
           width: 40, height: 40,
           decoration: BoxDecoration(
@@ -73,31 +87,30 @@ class _AdminTournamentTile extends StatelessWidget {
               style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
           ],
         ),
-        trailing: PopupMenuButton<String>(
-          onSelected: (action) {
-            if (action == 'participants') {
-              context.push('/admin/tournament/${t.id}/participants');
-            } else if (action == 'activate') {
-              _updateStatus(context, t.id, 'active');
-            } else if (action == 'complete') {
-              _updateStatus(context, t.id, 'completed');
-            }
-          },
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: 'participants', child: Text('View Participants')),
-            PopupMenuItem(value: 'activate',     child: Text('Set Active')),
-            PopupMenuItem(value: 'complete',     child: Text('Mark Complete')),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: _statusColor(t.status).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _statusColor(t.status).withOpacity(0.4)),
+              ),
+              child: Text(
+                t.status.toUpperCase(),
+                style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: _statusColor(t.status)),
+              ),
+            ),
+            const SizedBox(width: 4),
+            const Icon(Icons.chevron_right, color: AppColors.textSecondary),
           ],
         ),
         isThreeLine: true,
       ),
-    );
-  }
-
-  void _updateStatus(BuildContext context, String id, String status) async {
-    // Would call PATCH /admin/tournaments/:id in a real impl
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Tournament status updated to $status')),
     );
   }
 }

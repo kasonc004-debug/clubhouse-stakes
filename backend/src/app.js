@@ -9,6 +9,7 @@ const teamRoutes        = require('./routes/teams');
 const scoreRoutes       = require('./routes/scores');
 const leaderboardRoutes = require('./routes/leaderboard');
 const adminRoutes       = require('./routes/admin');
+const userRoutes        = require('./routes/users');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -26,6 +27,7 @@ app.use('/api/teams',        teamRoutes);
 app.use('/api/scores',       scoreRoutes);
 app.use('/api/leaderboard',  leaderboardRoutes);
 app.use('/api/admin',        adminRoutes);
+app.use('/api/users',        userRoutes);
 
 // ── Health check ────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ status: 'ok', version: '1.0.0' }));

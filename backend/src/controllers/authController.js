@@ -129,4 +129,64 @@ async function updateMe(req, res) {
   }
 }
 
-module.exports = { signup, login, appleSignIn, getMe, updateMe };
+// GET /api/auth/stats
+async function getMyStats(req, res) {
+  const userId = req.user.id;
+  try {
+    const { rows } = await db.query(
+      `WITH
+       individual_ranked AS (
+         SELECT
+           e.user_id,
+           RANK() OVER (
+             PARTITION BY e.tournament_id
+             ORDER BY e.net_score ASC NULLS LAST
+           ) AS rank
+         FROM entries e
+         JOIN tournaments t ON t.id = e.tournament_id
+         WHERE t.format = 'individual'
+           AND t.status = 'completed'
+           AND e.gross_score IS NOT NULL
+       ),
+       ind_golds   AS (SELECT COUNT(*)::int AS cnt FROM individual_ranked WHERE user_id=$1 AND rank=1),
+       ind_silvers AS (SELECT COUNT(*)::int AS cnt FROM individual_ranked WHERE user_id=$1 AND rank=2),
+       ind_bronzes AS (SELECT COUNT(*)::int AS cnt FROM individual_ranked WHERE user_id=$1 AND rank=3),
+       fb_golds    AS (SELECT COUNT(*)::int AS cnt FROM payouts WHERE user_id=$1 AND position=1),
+       fb_silvers  AS (SELECT COUNT(*)::int AS cnt FROM payouts WHERE user_id=$1 AND position=2),
+       fb_bronzes  AS (SELECT COUNT(*)::int AS cnt FROM payouts WHERE user_id=$1 AND position=3),
+       earnings    AS (
+         SELECT COALESCE(SUM(amount), 0)::numeric AS total
+         FROM payouts
+         WHERE user_id=$1 AND status='paid'
+       ),
+       total_entered AS (SELECT COUNT(*)::int AS cnt FROM entries WHERE user_id=$1),
+       total_played  AS (
+         SELECT COUNT(*)::int AS cnt
+         FROM entries e
+         JOIN tournaments t ON t.id=e.tournament_id
+         WHERE e.user_id=$1 AND t.status='completed' AND e.gross_score IS NOT NULL
+       ),
+       best_score AS (
+         SELECT MIN(e.gross_score) AS score
+         FROM entries e
+         JOIN tournaments t ON t.id = e.tournament_id
+         WHERE e.user_id = $1 AND e.gross_score IS NOT NULL AND t.status = 'completed'
+       )
+       SELECT
+         (SELECT cnt FROM ind_golds)   + (SELECT cnt FROM fb_golds)   AS golds,
+         (SELECT cnt FROM ind_silvers) + (SELECT cnt FROM fb_silvers) AS silvers,
+         (SELECT cnt FROM ind_bronzes) + (SELECT cnt FROM fb_bronzes) AS bronzes,
+         (SELECT total FROM earnings)                                  AS career_earnings,
+         (SELECT cnt FROM total_entered)                               AS tournaments_entered,
+         (SELECT cnt FROM total_played)                                AS tournaments_played,
+         (SELECT score FROM best_score)                                AS best_score`,
+      [userId]
+    );
+    res.json({ stats: rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch stats' });
+  }
+}
+
+module.exports = { signup, login, appleSignIn, getMe, updateMe, getMyStats };

@@ -22,6 +22,21 @@ async function requireAuth(req, res, next) {
   }
 }
 
+async function optionalAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return next();
+  const token = authHeader.slice(7);
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    const { rows } = await db.query(
+      'SELECT id, name, email, handicap, city, is_admin FROM users WHERE id = $1',
+      [payload.userId]
+    );
+    if (rows.length) req.user = rows[0];
+  } catch { /* ignore invalid tokens */ }
+  next();
+}
+
 function requireAdmin(req, res, next) {
   if (!req.user?.is_admin) {
     return res.status(403).json({ error: 'Admin access required' });
@@ -29,4 +44,4 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-module.exports = { requireAuth, requireAdmin };
+module.exports = { requireAuth, requireAdmin, optionalAuth };

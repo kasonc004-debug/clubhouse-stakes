@@ -1,3 +1,6 @@
+double _d(dynamic v) => double.tryParse(v?.toString() ?? '0') ?? 0;
+int    _i(dynamic v) => int.tryParse(v?.toString() ?? '0') ?? 0;
+
 class IndividualEntry {
   final String userId;
   final String name;
@@ -20,11 +23,11 @@ class IndividualEntry {
   factory IndividualEntry.fromJson(Map<String, dynamic> json) => IndividualEntry(
     userId:     json['user_id'] as String,
     name:       json['name'] as String,
-    handicap:   (json['handicap'] as num).toDouble(),
-    grossScore: (json['gross_score'] as num).toInt(),
-    netScore:   (json['net_score'] as num).toDouble(),
-    holeScores: (json['hole_scores'] as List? ?? []).map((e) => (e as num).toInt()).toList(),
-    rank:       (json['rank'] as num).toInt(),
+    handicap:   _d(json['handicap']),
+    grossScore: _i(json['gross_score']),
+    netScore:   _d(json['net_score']),
+    holeScores: (json['hole_scores'] as List? ?? []).map((e) => _i(e)).toList(),
+    rank:       _i(json['rank']),
   );
 }
 
@@ -44,8 +47,8 @@ class FourballPlayer {
   factory FourballPlayer.fromJson(Map<String, dynamic> json) => FourballPlayer(
     userId:     json['user_id'] as String,
     name:       json['name'] as String,
-    handicap:   (json['handicap'] as num).toDouble(),
-    holeScores: (json['hole_scores'] as List? ?? []).map((e) => (e as num).toInt()).toList(),
+    handicap:   _d(json['handicap']),
+    holeScores: (json['hole_scores'] as List? ?? []).map((e) => _i(e)).toList(),
   );
 }
 
@@ -72,9 +75,9 @@ class FourballEntry {
     players:          (json['players'] as List)
                         .map((e) => FourballPlayer.fromJson(e as Map<String, dynamic>))
                         .toList(),
-    netTotal:         (json['net_total'] as num).toDouble(),
+    netTotal:         _d(json['net_total']),
     bestBallPerHole:  (json['best_ball_per_hole'] as List? ?? [])
-                        .map((e) => (e as num).toDouble()).toList(),
-    rank:             (json['rank'] as num).toInt(),
+                        .map((e) => _d(e)).toList(),
+    rank:             _i(json['rank']),
   );
 }

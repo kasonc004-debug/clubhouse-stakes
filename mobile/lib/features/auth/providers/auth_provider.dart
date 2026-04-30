@@ -70,6 +70,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } on DioException catch (e) {
       state = state.copyWith(loading: false, error: ApiException.fromDio(e).message);
       return false;
+    } catch (e) {
+      state = state.copyWith(loading: false, error: 'Signup failed. Please try again.');
+      return false;
     }
   }
 
@@ -83,6 +86,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       return true;
     } on DioException catch (e) {
       state = state.copyWith(loading: false, error: ApiException.fromDio(e).message);
+      return false;
+    } catch (e) {
+      state = state.copyWith(loading: false, error: 'Login failed. Please try again.');
       return false;
     }
   }

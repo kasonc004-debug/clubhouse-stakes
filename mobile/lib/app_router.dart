@@ -11,19 +11,32 @@ import 'features/teams/screens/join_team_screen.dart';
 import 'features/scoring/screens/score_entry_screen.dart';
 import 'features/leaderboard/screens/leaderboard_screen.dart';
 import 'features/profile/screens/profile_screen.dart';
+import 'features/players/screens/player_search_screen.dart';
+import 'features/players/screens/player_profile_screen.dart';
 import 'features/admin/screens/admin_screen.dart';
 import 'features/admin/screens/create_tournament_screen.dart';
+import 'features/admin/screens/admin_tournament_detail_screen.dart';
+import 'features/admin/screens/admin_scores_screen.dart';
+
+// Thin ChangeNotifier that pings GoRouter when auth state changes.
+// Using this instead of ref.watch avoids recreating GoRouter on every state change.
+class _RouterNotifier extends ChangeNotifier {
+  void update() => notifyListeners();
+}
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final auth = ref.watch(authProvider);
+  final notifier = _RouterNotifier();
+  ref.listen<AuthState>(authProvider, (_, __) => notifier.update());
 
   return GoRouter(
-    initialLocation: auth.isAuthenticated ? '/home' : '/login',
+    initialLocation: '/login',
+    refreshListenable: notifier,
     redirect: (context, state) {
+      final auth      = ref.read(authProvider);
       final loggedIn  = auth.isAuthenticated;
       final loggingIn = state.matchedLocation == '/login' || state.matchedLocation == '/signup';
       if (!loggedIn && !loggingIn) return '/login';
-      if (loggedIn  && loggingIn) return '/home';
+      if (loggedIn  && loggingIn)  return '/home';
       return null;
     },
     routes: [
@@ -59,9 +72,29 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
 
       GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
+      GoRoute(path: '/search',  builder: (_, __) => const PlayerSearchScreen()),
+      GoRoute(
+        path: '/player/:id',
+        builder: (_, state) => PlayerProfileScreen(
+          playerId: state.pathParameters['id']!),
+      ),
 
       GoRoute(path: '/admin',   builder: (_, __) => const AdminScreen()),
       GoRoute(path: '/admin/create-tournament', builder: (_, __) => const CreateTournamentScreen()),
+      GoRoute(
+        path: '/admin/tournament/:id',
+        builder: (_, state) => AdminTournamentDetailScreen(
+          tournamentId:   state.pathParameters['id']!,
+          tournamentName: (state.extra as String?) ?? 'Tournament',
+        ),
+      ),
+      GoRoute(
+        path: '/admin/tournament/:id/scores',
+        builder: (_, state) => AdminScoresScreen(
+          tournamentId:   state.pathParameters['id']!,
+          tournamentName: (state.extra as String?) ?? 'Scores',
+        ),
+      ),
     ],
     errorBuilder: (context, state) => Scaffold(
       body: Center(

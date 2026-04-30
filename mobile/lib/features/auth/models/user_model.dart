@@ -25,7 +25,7 @@ class UserModel {
     id:                 json['id'] as String,
     name:               json['name'] as String,
     email:              json['email'] as String,
-    handicap:           (json['handicap'] as num?)?.toDouble() ?? 0,
+    handicap:           double.tryParse(json['handicap']?.toString() ?? '0') ?? 0,
     city:               json['city'] as String?,
     profilePictureUrl:  json['profile_picture_url'] as String?,
     isAdmin:            json['is_admin'] as bool? ?? false,

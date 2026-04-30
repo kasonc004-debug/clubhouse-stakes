@@ -8,7 +8,7 @@ class TeamMemberModel {
   factory TeamMemberModel.fromJson(Map<String, dynamic> json) => TeamMemberModel(
     id:       json['id'] as String,
     name:     json['name'] as String,
-    handicap: (json['handicap'] as num?)?.toDouble() ?? 0,
+    handicap: double.tryParse(json['handicap']?.toString() ?? '0') ?? 0,
   );
 }
 
@@ -43,7 +43,7 @@ class TeamModel {
     id:           json['id'] as String,
     tournamentId: json['tournament_id'] as String? ?? '',
     name:         json['name'] as String?,
-    memberCount:  (json['member_count'] as num?)?.toInt() ?? 0,
+    memberCount:  int.tryParse(json['member_count']?.toString() ?? '0') ?? 0,
     members:      (json['members'] as List? ?? [])
                     .map((e) => TeamMemberModel.fromJson(e as Map<String, dynamic>))
                     .toList(),

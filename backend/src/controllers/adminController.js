@@ -29,7 +29,7 @@ async function createTournament(req, res) {
 // PATCH /api/admin/tournaments/:id
 async function updateTournament(req, res) {
   const { id } = req.params;
-  const fields = ['name', 'city', 'date', 'format', 'sign_up_fee', 'max_players', 'fee_per', 'status', 'course_name', 'description'];
+  const fields = ['name', 'city', 'date', 'format', 'sign_up_fee', 'max_players', 'fee_per', 'status', 'course_name', 'description', 'skins_fee'];
   const updates = [];
   const values  = [];
   let idx = 1;
@@ -57,6 +57,61 @@ async function updateTournament(req, res) {
   }
 }
 
+// GET /api/admin/tournaments/:id/financials
+async function getFinancials(req, res) {
+  const { id } = req.params;
+  try {
+    const { rows } = await db.query(`
+      SELECT
+        t.id, t.name, t.sign_up_fee, t.fee_per, t.skins_fee,
+        t.house_cut_pct, t.payout_places, t.status, t.max_players,
+        COUNT(DISTINCT e.user_id)::int                                                  AS player_count,
+        COUNT(DISTINCT e.user_id)::int * t.sign_up_fee                                  AS total_collected,
+        COUNT(DISTINCT CASE WHEN e.skins_entry = TRUE THEN e.user_id END)::int          AS skins_count,
+        COUNT(DISTINCT CASE WHEN e.skins_entry = TRUE THEN e.user_id END)::int * t.skins_fee AS skins_total,
+        ROUND(COUNT(DISTINCT e.user_id)::numeric * t.sign_up_fee * (t.house_cut_pct / 100.0), 2) AS house_cut_amount,
+        ROUND(COUNT(DISTINCT e.user_id)::numeric * t.sign_up_fee * (1 - t.house_cut_pct / 100.0), 2) AS prize_pool
+      FROM tournaments t
+      LEFT JOIN entries e ON e.tournament_id = t.id AND e.payment_status = 'paid'
+      WHERE t.id = $1
+      GROUP BY t.id
+    `, [id]);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json({ financials: rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch financials' });
+  }
+}
+
+// PATCH /api/admin/tournaments/:id/financials
+async function updateFinancials(req, res) {
+  const { id } = req.params;
+  const { house_cut_pct, payout_places, skins_fee } = req.body;
+  const updates = [];
+  const values  = [];
+  let idx = 1;
+
+  if (house_cut_pct !== undefined) { updates.push(`house_cut_pct = $${idx++}`); values.push(house_cut_pct); }
+  if (skins_fee     !== undefined) { updates.push(`skins_fee = $${idx++}`);     values.push(skins_fee); }
+  if (payout_places !== undefined) { updates.push(`payout_places = $${idx++}`); values.push(JSON.stringify(payout_places)); }
+
+  if (!updates.length) return res.status(422).json({ error: 'No fields provided' });
+  values.push(id);
+
+  try {
+    const { rows } = await db.query(
+      `UPDATE tournaments SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`,
+      values
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json({ tournament: rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to update financials' });
+  }
+}
+
 // GET /api/admin/tournaments/:id/participants
 async function adminGetParticipants(req, res) {
   const { id } = req.params;
@@ -78,4 +133,39 @@ async function adminGetParticipants(req, res) {
   }
 }
 
-module.exports = { createTournament, updateTournament, adminGetParticipants };
+// PATCH /api/admin/tournaments/:id/scores/:entryId
+async function adminUpdateScore(req, res) {
+  const { id, entryId } = req.params;
+  const { hole_scores } = req.body;
+
+  if (!Array.isArray(hole_scores) || hole_scores.length !== 18)
+    return res.status(422).json({ error: 'hole_scores must be an array of 18 integers' });
+
+  try {
+    const { rows: eRows } = await db.query(
+      `SELECT e.id, u.handicap
+       FROM entries e
+       JOIN users u ON u.id = e.user_id
+       WHERE e.id = $1 AND e.tournament_id = $2`,
+      [entryId, id]
+    );
+    if (!eRows.length) return res.status(404).json({ error: 'Entry not found' });
+
+    const gross = hole_scores.reduce((a, b) => a + b, 0);
+    const net   = parseFloat((gross - eRows[0].handicap).toFixed(1));
+
+    const { rows } = await db.query(
+      `UPDATE entries
+       SET hole_scores = $1, gross_score = $2, net_score = $3, updated_at = NOW()
+       WHERE id = $4
+       RETURNING *`,
+      [hole_scores, gross, net, entryId]
+    );
+    res.json({ entry: rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to update score' });
+  }
+}
+
+module.exports = { createTournament, updateTournament, adminGetParticipants, getFinancials, updateFinancials, adminUpdateScore };
