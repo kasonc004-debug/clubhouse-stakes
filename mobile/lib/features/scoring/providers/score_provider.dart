@@ -45,3 +45,33 @@ final scoreNotifierProvider =
     StateNotifierProvider.autoDispose<ScoreNotifier, AsyncValue<EntryModel?>>(
   (ref) => ScoreNotifier(ref.read(apiClientProvider)),
 );
+
+// Per-hole live save
+class HoleUpdateNotifier extends StateNotifier<AsyncValue<void>> {
+  final ApiClient _api;
+  HoleUpdateNotifier(this._api) : super(const AsyncData(null));
+
+  Future<bool> update({
+    required String tournamentId,
+    required int holeNumber,
+    required int score,
+  }) async {
+    state = const AsyncLoading();
+    try {
+      await _api.patch(ApiConstants.updateHoleScore(tournamentId), data: {
+        'hole_number': holeNumber,
+        'score':       score,
+      });
+      state = const AsyncData(null);
+      return true;
+    } on DioException catch (e) {
+      state = AsyncError(ApiException.fromDio(e), StackTrace.current);
+      return false;
+    }
+  }
+}
+
+final holeUpdateProvider =
+    StateNotifierProvider.autoDispose<HoleUpdateNotifier, AsyncValue<void>>(
+  (ref) => HoleUpdateNotifier(ref.read(apiClientProvider)),
+);

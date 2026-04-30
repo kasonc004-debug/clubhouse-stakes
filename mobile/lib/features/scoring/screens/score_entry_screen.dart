@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/widgets/cs_button.dart';
+import '../models/entry_model.dart';
 import '../providers/score_provider.dart';
 
-// Standard par for each hole (typical 18-hole course)
 const List<int> _pars = [4, 4, 3, 4, 5, 3, 4, 4, 5, 4, 3, 4, 5, 4, 3, 4, 5, 4];
 
 class ScoreEntryScreen extends ConsumerStatefulWidget {
@@ -17,204 +16,259 @@ class ScoreEntryScreen extends ConsumerStatefulWidget {
 }
 
 class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
-  final List<int?> _scores = List.filled(18, null);
-  int _currentHole = 0;
+  List<int?> _scores = List.filled(18, null);
+  int  _currentHole  = 0;
+  bool _loaded       = false;
+  bool _saving       = false;
 
-  int get _gross => _scores.where((s) => s != null).fold(0, (a, b) => a + b!);
-  bool get _allFilled => _scores.every((s) => s != null);
+  int  get _gross      => _scores.where((s) => s != null).fold(0, (a, b) => a + b!);
+  int  get _holesIn    => _scores.where((s) => s != null).length;
+  bool get _allFilled  => _scores.every((s) => s != null);
 
-  void _setScore(int score) {
-    setState(() { _scores[_currentHole] = score; });
-    if (_currentHole < 17) {
-      setState(() => _currentHole++);
+  // First hole index with no score (or 17 if all filled)
+  int get _firstUnfilled {
+    final i = _scores.indexWhere((s) => s == null);
+    return i == -1 ? 18 : i;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadExisting());
+  }
+
+  Future<void> _loadExisting() async {
+    final entry = await ref.read(myScoreProvider(widget.tournamentId).future);
+    if (!mounted) return;
+    if (entry != null && entry.holeScores.isNotEmpty) {
+      setState(() {
+        for (var i = 0; i < entry.holeScores.length && i < 18; i++) {
+          _scores[i] = entry.holeScores[i] > 0 ? entry.holeScores[i] : null;
+        }
+        _currentHole = _firstUnfilled.clamp(0, 17);
+        _loaded = true;
+      });
+    } else {
+      setState(() { _loaded = true; });
     }
   }
 
-  Future<void> _submit() async {
-    if (!_allFilled) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter all 18 holes'), backgroundColor: AppColors.warning));
-      return;
+  Future<void> _confirmScore(int score) async {
+    if (_saving) return;
+    setState(() {
+      _scores[_currentHole] = score;
+      _saving = true;
+    });
+
+    await ref.read(holeUpdateProvider.notifier).update(
+      tournamentId: widget.tournamentId,
+      holeNumber:   _currentHole + 1,
+      score:        score,
+    );
+
+    if (!mounted) return;
+    setState(() => _saving = false);
+
+    // Auto-advance to next unfilled hole
+    final next = _firstUnfilled;
+    if (next < 18) {
+      await Future.delayed(const Duration(milliseconds: 280));
+      if (mounted) setState(() => _currentHole = next);
     }
+  }
+
+  Future<void> _submitFinal() async {
     final ok = await ref.read(scoreNotifierProvider.notifier).submit(
       tournamentId: widget.tournamentId,
       holeScores:   _scores.map((s) => s!).toList(),
     );
-    if (ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Scorecard submitted!'), backgroundColor: AppColors.success));
+    if (!mounted) return;
+    if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Row(children: [
+          Icon(Icons.check_circle, color: Colors.white, size: 18),
+          SizedBox(width: 10),
+          Text('Scorecard submitted!'),
+        ]),
+        backgroundColor: AppColors.success,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ));
       ref.invalidate(myScoreProvider(widget.tournamentId));
       context.pop();
+    } else {
+      final err = ref.read(scoreNotifierProvider).error;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(err?.toString() ?? 'Failed to submit'),
+        backgroundColor: AppColors.error,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ));
     }
   }
 
+  // Can only jump to holes that are filled or the first unfilled
+  bool _canNavigateTo(int i) => i <= _firstUnfilled;
+
   @override
   Widget build(BuildContext context) {
+    if (!_loaded) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF1B3D2C),
+          foregroundColor: Colors.white,
+          title: const Text('Live Scoring', style: TextStyle(fontWeight: FontWeight.w800)),
+        ),
+        body: const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      );
+    }
+
     final submitState = ref.watch(scoreNotifierProvider);
+    final holeScore   = _scores[_currentHole];
+    final par         = _pars[_currentHole];
+    final canNext     = holeScore != null && _currentHole < 17;
+    final showSubmit  = _allFilled && _currentHole == 17;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Enter Scorecard'),
-        actions: [
-          if (_allFilled)
-            TextButton(
-              onPressed: _submit,
-              child: const Text('Submit', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-            ),
-        ],
-      ),
+      backgroundColor: AppColors.background,
       body: Column(
         children: [
-          // Score summary bar
-          Container(
-            color: AppColors.primaryLight,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: Row(children: [
-              _SummaryPill('Gross', _gross.toString()),
-              const SizedBox(width: 16),
-              _SummaryPill('Holes', '${_scores.where((s) => s != null).length}/18'),
-              const SizedBox(width: 16),
-              _SummaryPill('Remaining', '${_scores.where((s) => s == null).length}'),
-            ]),
+          // ── Header ────────────────────────────────────────────
+          _ScoreHeader(
+            currentHole: _currentHole,
+            gross: _gross,
+            holesIn: _holesIn,
+            saving: _saving,
+            onBack: () => context.pop(),
           ),
 
-          // Hole mini-grid
-          SizedBox(
-            height: 64,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-              itemCount: 18,
-              itemBuilder: (context, i) => GestureDetector(
-                onTap: () => setState(() => _currentHole = i),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  width: 38, height: 38,
-                  margin: const EdgeInsets.symmetric(horizontal: 3),
-                  decoration: BoxDecoration(
-                    color: _currentHole == i
-                        ? AppColors.primary
-                        : _scores[i] != null
-                            ? _scoreColor(_scores[i]!, _pars[i]).withOpacity(0.15)
-                            : AppColors.background,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: _currentHole == i ? AppColors.primary : AppColors.divider,
-                    ),
-                  ),
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('${i + 1}', style: TextStyle(
-                          fontSize: 10,
-                          color: _currentHole == i ? Colors.white : AppColors.textSecondary,
-                        )),
-                        Text(
-                          _scores[i]?.toString() ?? '-',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: _currentHole == i
-                                ? Colors.white
-                                : _scores[i] != null
-                                    ? _scoreColor(_scores[i]!, _pars[i])
-                                    : AppColors.textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
+          // ── Hole navigation grid ───────────────────────────────
+          _HoleGrid(
+            scores:        _scores,
+            currentHole:   _currentHole,
+            firstUnfilled: _firstUnfilled,
+            onTap:         (i) {
+              if (_canNavigateTo(i)) setState(() => _currentHole = i);
+            },
           ),
 
-          const Divider(height: 1),
+          const Divider(height: 1, color: AppColors.divider),
 
-          // Current hole entry
+          // ── Active hole entry ──────────────────────────────────
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
               child: Column(
                 children: [
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    Text('Hole ${_currentHole + 1}',
-                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
-                    Text('Par ${_pars[_currentHole]}',
-                      style: const TextStyle(fontSize: 16, color: AppColors.textSecondary)),
-                  ]),
-                  const SizedBox(height: 8),
-                  if (_scores[_currentHole] != null)
-                    _ScoreBadge(score: _scores[_currentHole]!, par: _pars[_currentHole]),
+                  // Hole title + par
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(
+                          'HOLE ${_currentHole + 1}',
+                          style: const TextStyle(
+                            fontSize: 28, fontWeight: FontWeight.w900,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          'Par $par',
+                          style: const TextStyle(
+                            fontSize: 14, color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ]),
+                      if (holeScore != null)
+                        _ScoreBadge(score: holeScore, par: par),
+                    ],
+                  ),
                   const SizedBox(height: 24),
 
-                  // Score buttons: 1–10
+                  // Score picker grid (1–10)
                   Wrap(
                     spacing: 10,
                     runSpacing: 10,
                     alignment: WrapAlignment.center,
                     children: List.generate(10, (i) {
-                      final score = i + 1;
-                      final diff  = score - _pars[_currentHole];
-                      final color = _scoreColor(score, _pars[_currentHole]);
+                      final score  = i + 1;
+                      final color  = _scoreColor(score, par);
+                      final picked = holeScore == score;
                       return GestureDetector(
-                        onTap: () => _setScore(score),
+                        onTap: _saving ? null : () => _confirmScore(score),
                         child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 100),
-                          width: 60, height: 60,
+                          duration: const Duration(milliseconds: 120),
+                          width: 64, height: 64,
                           decoration: BoxDecoration(
-                            color: _scores[_currentHole] == score
-                                ? color
-                                : color.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
+                            color: picked ? color : color.withOpacity(0.10),
+                            borderRadius: BorderRadius.circular(14),
                             border: Border.all(
-                              color: _scores[_currentHole] == score ? color : color.withOpacity(0.3),
+                              color: picked ? color : color.withOpacity(0.30),
                               width: 2,
                             ),
                           ),
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Text(score.toString(),
+                              Text(
+                                score.toString(),
                                 style: TextStyle(
-                                  fontSize: 20, fontWeight: FontWeight.w800,
-                                  color: _scores[_currentHole] == score ? Colors.white : color,
-                                )),
-                              Text(_scoreName(diff),
+                                  fontSize: 22, fontWeight: FontWeight.w900,
+                                  color: picked ? Colors.white : color,
+                                ),
+                              ),
+                              Text(
+                                _scoreName(score - par),
                                 style: TextStyle(
                                   fontSize: 9,
-                                  color: _scores[_currentHole] == score ? Colors.white70 : color.withOpacity(0.7),
-                                )),
+                                  color: picked ? Colors.white70 : color.withOpacity(0.7),
+                                ),
+                              ),
                             ],
                           ),
                         ),
                       );
                     }),
                   ),
-                  const Spacer(),
 
-                  // Navigation
+                  const SizedBox(height: 28),
+
+                  // Navigation buttons
                   Row(children: [
-                    if (_currentHole > 0)
-                      Expanded(child: CSButton(
-                        label: '← Hole $_currentHole',
-                        outlined: true,
-                        onPressed: () => setState(() => _currentHole--),
-                      )),
-                    if (_currentHole > 0) const SizedBox(width: 10),
-                    if (_currentHole < 17)
-                      Expanded(child: CSButton(
-                        label: 'Hole ${_currentHole + 2} →',
-                        onPressed: () => setState(() => _currentHole++),
-                      )),
-                    if (_currentHole == 17 && _allFilled)
-                      Expanded(child: CSButton(
-                        label: 'Submit Scorecard',
-                        loading: submitState.isLoading,
-                        onPressed: _submit,
-                        color: AppColors.gold,
-                      )),
+                    if (_currentHole > 0) ...[
+                      Expanded(
+                        child: _NavButton(
+                          label: '← Hole $_currentHole',
+                          outlined: true,
+                          onTap: () => setState(() => _currentHole--),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                    ],
+                    if (canNext)
+                      Expanded(
+                        child: _NavButton(
+                          label: 'Hole ${_currentHole + 2} →',
+                          // Disabled until current hole has a score
+                          onTap: holeScore != null
+                              ? () => setState(() => _currentHole++)
+                              : null,
+                          hint: holeScore == null
+                              ? 'Enter hole ${_currentHole + 1} first'
+                              : null,
+                        ),
+                      ),
+                    if (showSubmit)
+                      Expanded(
+                        child: _NavButton(
+                          label: 'Submit Scorecard',
+                          color: const Color(0xFFC9A84C),
+                          loading: submitState.isLoading,
+                          onTap: submitState.isLoading ? null : _submitFinal,
+                        ),
+                      ),
                   ]),
                 ],
               ),
@@ -226,41 +280,197 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
   }
 
   Color _scoreColor(int score, int par) {
-    final diff = score - par;
-    if (diff <= -2) return AppColors.eagle;
-    if (diff == -1) return AppColors.birdie;
-    if (diff == 0)  return AppColors.par;
-    if (diff == 1)  return AppColors.bogey;
+    final d = score - par;
+    if (d <= -2) return const Color(0xFF00BCD4);
+    if (d == -1) return AppColors.success;
+    if (d == 0)  return const Color(0xFF1B3D2C);
+    if (d == 1)  return AppColors.warning;
     return AppColors.error;
   }
 
-  String _scoreName(int diff) {
-    return switch (diff) {
-      <= -2 => 'Eagle',
-      -1    => 'Birdie',
-      0     => 'Par',
-      1     => 'Bogey',
-      2     => 'Dbl Bogey',
-      _     => '+$diff',
-    };
+  String _scoreName(int diff) => switch (diff) {
+    <= -2 => 'Eagle',
+    -1    => 'Birdie',
+    0     => 'Par',
+    1     => 'Bogey',
+    2     => 'Dbl Bogey',
+    _     => '+$diff',
+  };
+}
+
+// ── Header ────────────────────────────────────────────────────────────────────
+class _ScoreHeader extends StatelessWidget {
+  final int currentHole, gross, holesIn;
+  final bool saving;
+  final VoidCallback onBack;
+  const _ScoreHeader({
+    required this.currentHole,
+    required this.gross,
+    required this.holesIn,
+    required this.saving,
+    required this.onBack,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF1B3D2C), Color(0xFF2A5940)],
+        ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 20, 16),
+          child: Row(children: [
+            IconButton(
+              icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 18),
+              onPressed: onBack,
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text(
+                  'LIVE SCORING',
+                  style: TextStyle(
+                    color: Color(0xFFC9A84C), fontSize: 10,
+                    fontWeight: FontWeight.w700, letterSpacing: 2,
+                  ),
+                ),
+                Text(
+                  'Hole ${currentHole + 1} of 18',
+                  style: const TextStyle(
+                    color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ]),
+            ),
+            // Saving indicator
+            if (saving)
+              const SizedBox(
+                width: 16, height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2, color: Color(0xFFC9A84C)),
+              ),
+            const SizedBox(width: 8),
+            // Progress + gross
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Text(
+                '$holesIn / 18',
+                style: const TextStyle(
+                  color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                gross > 0 ? '$gross gross' : '—',
+                style: const TextStyle(
+                  color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800,
+                ),
+              ),
+            ]),
+          ]),
+        ),
+      ),
+    );
   }
 }
 
-class _SummaryPill extends StatelessWidget {
-  final String label;
-  final String value;
-  const _SummaryPill(this.label, this.value);
+// ── Hole grid ─────────────────────────────────────────────────────────────────
+class _HoleGrid extends StatelessWidget {
+  final List<int?> scores;
+  final int currentHole, firstUnfilled;
+  final ValueChanged<int> onTap;
+  const _HoleGrid({
+    required this.scores,
+    required this.currentHole,
+    required this.firstUnfilled,
+    required this.onTap,
+  });
 
   @override
-  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
-    Text('$label: ', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-    Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
-  ]);
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 62,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        itemCount: 18,
+        itemBuilder: (context, i) {
+          final isCurrent  = i == currentHole;
+          final isFilled   = scores[i] != null;
+          final isLocked   = i > firstUnfilled;
+          final par        = _pars[i];
+          final score      = scores[i];
+
+          Color bg, borderColor;
+          if (isCurrent) {
+            bg = const Color(0xFF1B3D2C);
+            borderColor = const Color(0xFF1B3D2C);
+          } else if (isFilled) {
+            bg = AppColors.success.withOpacity(0.12);
+            borderColor = AppColors.success.withOpacity(0.4);
+          } else if (isLocked) {
+            bg = AppColors.background;
+            borderColor = AppColors.divider.withOpacity(0.4);
+          } else {
+            bg = AppColors.background;
+            borderColor = AppColors.divider;
+          }
+
+          return GestureDetector(
+            onTap: isLocked ? null : () => onTap(i),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              width: 38, height: 38,
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: borderColor),
+              ),
+              child: Center(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text(
+                    '${i + 1}',
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: isCurrent ? Colors.white60
+                          : isLocked ? AppColors.divider
+                          : AppColors.textSecondary,
+                    ),
+                  ),
+                  Text(
+                    score != null ? '$score' : (isLocked ? '·' : '-'),
+                    style: TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w800,
+                      color: isCurrent
+                          ? Colors.white
+                          : isFilled
+                              ? (score! - par <= -1
+                                  ? AppColors.success
+                                  : score - par == 0
+                                      ? const Color(0xFF1B3D2C)
+                                      : AppColors.warning)
+                              : isLocked
+                                  ? AppColors.divider
+                                  : AppColors.textSecondary,
+                    ),
+                  ),
+                ]),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
 }
 
+// ── Score badge ───────────────────────────────────────────────────────────────
 class _ScoreBadge extends StatelessWidget {
-  final int score;
-  final int par;
+  final int score, par;
   const _ScoreBadge({required this.score, required this.par});
 
   @override
@@ -274,6 +484,87 @@ class _ScoreBadge extends StatelessWidget {
       2     => 'Double Bogey',
       _     => '+$diff',
     };
-    return Text(label, style: const TextStyle(fontSize: 16, color: AppColors.textSecondary));
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+// ── Nav button ────────────────────────────────────────────────────────────────
+class _NavButton extends StatelessWidget {
+  final String label;
+  final VoidCallback? onTap;
+  final bool outlined, loading;
+  final Color? color;
+  final String? hint;
+  const _NavButton({
+    required this.label,
+    this.onTap,
+    this.outlined = false,
+    this.loading = false,
+    this.color,
+    this.hint,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bg      = color ?? const Color(0xFF1B3D2C);
+    final enabled = onTap != null && !loading;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        GestureDetector(
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            height: 52,
+            decoration: BoxDecoration(
+              color: outlined ? Colors.transparent
+                  : enabled ? bg : bg.withOpacity(0.35),
+              borderRadius: BorderRadius.circular(14),
+              border: outlined
+                  ? Border.all(color: const Color(0xFF1B3D2C), width: 1.5)
+                  : null,
+            ),
+            child: Center(
+              child: loading
+                  ? const SizedBox(
+                      width: 20, height: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2.5, color: Colors.white))
+                  : Text(
+                      label,
+                      style: TextStyle(
+                        color: outlined
+                            ? const Color(0xFF1B3D2C)
+                            : Colors.white,
+                        fontSize: 14, fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+            ),
+          ),
+        ),
+        if (hint != null) ...[
+          const SizedBox(height: 5),
+          Text(
+            hint!,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 11, color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ],
+    );
   }
 }

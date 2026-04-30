@@ -25,7 +25,8 @@ class ApiConstants {
 
   // Scores
   static const String submitScore = '/scores/submit';
-  static String myScore(String tournamentId) => '/scores/$tournamentId/me';
+  static String myScore(String tournamentId)        => '/scores/$tournamentId/me';
+  static String updateHoleScore(String tournamentId) => '/scores/$tournamentId/hole';
 
   // Leaderboard
   static String leaderboard(String tournamentId) => '/leaderboard/$tournamentId';

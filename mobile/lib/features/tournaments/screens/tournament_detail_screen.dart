@@ -43,7 +43,8 @@ class _DetailViewState extends ConsumerState<_DetailView> {
   Widget build(BuildContext context) {
     final t    = widget.tournament;
     final user = ref.watch(authProvider).user;
-    final showRegister = t.isUpcoming && user != null && !t.isFourball && !t.isEnrolled;
+    final showRegister  = t.isUpcoming && user != null && !t.isFourball && !t.isEnrolled;
+    final showEnterScore = t.status == 'active' && t.isEnrolled;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -52,7 +53,7 @@ class _DetailViewState extends ConsumerState<_DetailView> {
           // ── Scrollable content ──────────────────────────────
           Positioned.fill(
            child: SingleChildScrollView(
-            padding: EdgeInsets.only(bottom: showRegister ? 100 : 32),
+            padding: EdgeInsets.only(bottom: showRegister || showEnterScore ? 100 : 32),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -160,8 +161,8 @@ class _DetailViewState extends ConsumerState<_DetailView> {
            ),
           ),
 
-          // ── Sticky register button ──────────────────────────
-          if (showRegister)
+          // ── Sticky action button ────────────────────────────
+          if (showRegister || showEnterScore)
             Positioned(
               bottom: 0, left: 0, right: 0,
               child: Container(
@@ -179,8 +180,9 @@ class _DetailViewState extends ConsumerState<_DetailView> {
                     ),
                   ],
                 ),
-                child: _RegisterButton(
-                    tournament: t, joinState: widget.joinState),
+                child: showRegister
+                    ? _RegisterButton(tournament: t, joinState: widget.joinState)
+                    : _EnterScoreButton(tournamentId: t.id),
               ),
             ),
         ],
@@ -709,6 +711,48 @@ class _RegisterButton extends ConsumerWidget {
       ));
     }
   }
+}
+
+// ── Enter Score button ────────────────────────────────────────────────────────
+class _EnterScoreButton extends StatelessWidget {
+  final String tournamentId;
+  const _EnterScoreButton({required this.tournamentId});
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: () => context.push('/tournament/$tournamentId/score'),
+    child: Container(
+      height: 56,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1B3D2C), Color(0xFF3D7055)],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF1B3D2C).withOpacity(0.3),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: const Center(
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.sports_golf, color: Colors.white, size: 20),
+          SizedBox(width: 10),
+          Text(
+            'ENTER SCORE',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1,
+            ),
+          ),
+        ]),
+      ),
+    ),
+  );
 }
 
 // ── Button helpers ────────────────────────────────────────────────────────────

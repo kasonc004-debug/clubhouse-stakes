@@ -183,11 +183,17 @@ class HomeScreen extends ConsumerWidget {
           }
           return SliverList(
             delegate: SliverChildBuilderDelegate(
-              (context, i) => _MatchCard(
-                tournament: tournaments[i],
-                onTap: () => context.push('/tournament/${tournaments[i].id}'),
-                enrolled: true,
-              ),
+              (context, i) {
+                final t = tournaments[i];
+                return _MatchCard(
+                  tournament: t,
+                  onTap: () => context.push('/tournament/${t.id}'),
+                  enrolled: true,
+                  onScoreTap: t.status == 'active'
+                      ? () => context.push('/tournament/${t.id}/score')
+                      : null,
+                );
+              },
               childCount: tournaments.length,
             ),
           );
@@ -469,11 +475,13 @@ class _TabRow extends StatelessWidget {
 class _MatchCard extends StatelessWidget {
   final TournamentModel tournament;
   final VoidCallback onTap;
+  final VoidCallback? onScoreTap;
   final bool enrolled;
 
   const _MatchCard({
     required this.tournament,
     required this.onTap,
+    this.onScoreTap,
     this.enrolled = false,
   });
 
@@ -628,6 +636,39 @@ class _MatchCard extends StatelessWidget {
                       ]),
                     ],
                   ),
+                  // Enter score CTA when tournament is active
+                  if (onScoreTap != null) ...[
+                    const SizedBox(height: 12),
+                    GestureDetector(
+                      onTap: onScoreTap,
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF1B3D2C), Color(0xFF3D7055)],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.sports_golf, color: Colors.white, size: 16),
+                            SizedBox(width: 8),
+                            Text(
+                              'ENTER SCORE',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

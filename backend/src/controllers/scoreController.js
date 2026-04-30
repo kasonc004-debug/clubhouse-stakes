@@ -68,4 +68,60 @@ async function getMyScore(req, res) {
   }
 }
 
-module.exports = { submitScore, getMyScore };
+// PATCH /api/scores/:tournament_id/hole
+async function updateHoleScore(req, res) {
+  const { tournament_id } = req.params;
+  const { hole_number, score } = req.body;
+  const userId = req.user.id;
+
+  const holeNum   = parseInt(hole_number, 10);
+  const holeScore = parseInt(score, 10);
+
+  if (!holeNum || holeNum < 1 || holeNum > 18)
+    return res.status(422).json({ error: 'hole_number must be 1–18' });
+  if (isNaN(holeScore) || holeScore < 1 || holeScore > 20)
+    return res.status(422).json({ error: 'score must be an integer 1–20' });
+
+  try {
+    const { rows: tRows } = await db.query(
+      'SELECT status FROM tournaments WHERE id = $1', [tournament_id]
+    );
+    if (!tRows.length) return res.status(404).json({ error: 'Tournament not found' });
+    if (tRows[0].status !== 'active')
+      return res.status(400).json({ error: 'Tournament is not active' });
+
+    const { rows: eRows } = await db.query(
+      `SELECT e.id, e.hole_scores, u.handicap
+       FROM entries e JOIN users u ON u.id = e.user_id
+       WHERE e.user_id = $1 AND e.tournament_id = $2`,
+      [userId, tournament_id]
+    );
+    if (!eRows.length) return res.status(404).json({ error: 'Entry not found' });
+
+    const entry = eRows[0];
+    const holes = Array.isArray(entry.hole_scores) && entry.hole_scores.length === 18
+      ? [...entry.hole_scores]
+      : new Array(18).fill(0);
+    holes[holeNum - 1] = holeScore;
+
+    const grossScore  = holes.reduce((a, b) => a + b, 0);
+    const filledCount = holes.filter(h => h > 0).length;
+    const netScore    = filledCount === 18
+      ? calcNetScore(grossScore, parseFloat(entry.handicap))
+      : null;
+
+    const { rows } = await db.query(
+      `UPDATE entries
+         SET hole_scores = $1, gross_score = $2, net_score = $3, updated_at = NOW()
+       WHERE id = $4
+       RETURNING *`,
+      [holes, grossScore, netScore, entry.id]
+    );
+    res.json({ entry: rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to update hole score' });
+  }
+}
+
+module.exports = { submitScore, getMyScore, updateHoleScore };
