@@ -12,7 +12,6 @@ class AppTheme {
       primary: AppColors.primary,
       secondary: AppColors.gold,
       surface: AppColors.surface,
-      background: AppColors.background,
       onPrimary: AppColors.textOnPrimary,
     ),
     scaffoldBackgroundColor: AppColors.background,
@@ -28,7 +27,7 @@ class AppTheme {
         letterSpacing: 0.5,
       ),
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: AppColors.cardBg,
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
