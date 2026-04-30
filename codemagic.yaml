@@ -1,0 +1,58 @@
+workflows:
+  ios-release:
+    name: iOS Release
+    max_build_duration: 60
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      vars:
+        BUNDLE_ID: "com.clubhousestakes.app"
+        APP_STORE_APPLE_ID: "TODO_REPLACE_WITH_APP_ID"
+      app_store_connect:
+        auth: integration
+    scripts:
+      - name: Get Flutter packages
+        script: cd mobile && flutter pub get
+      - name: Install pods
+        script: cd mobile/ios && pod install
+      - name: Build iOS release
+        script: |
+          cd mobile
+          flutter build ios --release --no-codesign
+      - name: Archive and export
+        script: |
+          cd mobile/ios
+          xcode-project use-profiles
+          xcode-project build-ipa \
+            --workspace Runner.xcworkspace \
+            --scheme Runner
+    artifacts:
+      - mobile/build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+
+  android-release:
+    name: Android Release
+    max_build_duration: 60
+    environment:
+      flutter: stable
+      vars:
+        PACKAGE_NAME: "com.clubhousestakes.app"
+      android_signing:
+        - clubhouse_keystore
+    scripts:
+      - name: Get Flutter packages
+        script: cd mobile && flutter pub get
+      - name: Build Android release bundle
+        script: |
+          cd mobile
+          flutter build appbundle --release
+    artifacts:
+      - mobile/build/app/outputs/bundle/release/*.aab
+    publishing:
+      google_play:
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: internal

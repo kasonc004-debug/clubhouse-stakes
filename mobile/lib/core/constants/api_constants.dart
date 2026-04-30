@@ -1,8 +1,7 @@
 class ApiConstants {
   ApiConstants._();
 
-  // Change to your server IP / domain before building
-  static const String baseUrl = 'http://localhost:3000/api';
+  static const String baseUrl = 'https://clubhouse-stakes.onrender.com/api';
 
   // Auth
   static const String signup    = '/auth/signup';
