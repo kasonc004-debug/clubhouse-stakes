@@ -10,8 +10,12 @@ async function migrate() {
     await db.query(sql);
     console.log('Migration complete.');
   } catch (err) {
-    console.error('Migration failed:', err.message);
-    process.exit(1);
+    if (err.code === '42P07') {
+      console.log('Tables already exist — skipping migration.');
+    } else {
+      console.error('Migration failed:', err.message);
+      process.exit(1);
+    }
   }
   process.exit(0);
 }

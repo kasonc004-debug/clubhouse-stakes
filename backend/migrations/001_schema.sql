@@ -7,7 +7,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- ============================================================
 -- USERS
 -- ============================================================
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name          VARCHAR(255) NOT NULL,
   email         VARCHAR(255) UNIQUE NOT NULL,
@@ -24,7 +24,7 @@ CREATE TABLE users (
 -- ============================================================
 -- TOURNAMENTS
 -- ============================================================
-CREATE TABLE tournaments (
+CREATE TABLE IF NOT EXISTS tournaments (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name          VARCHAR(255) NOT NULL,
   city          VARCHAR(255) NOT NULL,
@@ -44,7 +44,7 @@ CREATE TABLE tournaments (
 -- ============================================================
 -- TEAMS  (fourball only)
 -- ============================================================
-CREATE TABLE teams (
+CREATE TABLE IF NOT EXISTS teams (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tournament_id UUID NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
   name          VARCHAR(255),
@@ -55,7 +55,7 @@ CREATE TABLE teams (
 -- ============================================================
 -- TEAM MEMBERS
 -- ============================================================
-CREATE TABLE team_members (
+CREATE TABLE IF NOT EXISTS team_members (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   team_id    UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
   user_id    UUID NOT NULL REFERENCES users(id),
@@ -66,7 +66,7 @@ CREATE TABLE team_members (
 -- ============================================================
 -- ENTRIES
 -- ============================================================
-CREATE TABLE entries (
+CREATE TABLE IF NOT EXISTS entries (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id        UUID NOT NULL REFERENCES users(id),
   tournament_id  UUID NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
@@ -84,7 +84,7 @@ CREATE TABLE entries (
 -- ============================================================
 -- PAYOUTS
 -- ============================================================
-CREATE TABLE payouts (
+CREATE TABLE IF NOT EXISTS payouts (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tournament_id UUID NOT NULL REFERENCES tournaments(id),
   user_id       UUID NOT NULL REFERENCES users(id),
@@ -98,15 +98,15 @@ CREATE TABLE payouts (
 -- ============================================================
 -- INDEXES
 -- ============================================================
-CREATE INDEX idx_tournaments_city       ON tournaments(city);
-CREATE INDEX idx_tournaments_date       ON tournaments(date);
-CREATE INDEX idx_tournaments_status     ON tournaments(status);
-CREATE INDEX idx_entries_tournament     ON entries(tournament_id);
-CREATE INDEX idx_entries_user           ON entries(user_id);
-CREATE INDEX idx_entries_team           ON entries(team_id);
-CREATE INDEX idx_team_members_team      ON team_members(team_id);
-CREATE INDEX idx_team_members_user      ON team_members(user_id);
-CREATE INDEX idx_teams_tournament       ON teams(tournament_id);
+CREATE INDEX IF NOT EXISTS idx_tournaments_city       ON tournaments(city);
+CREATE INDEX IF NOT EXISTS idx_tournaments_date       ON tournaments(date);
+CREATE INDEX IF NOT EXISTS idx_tournaments_status     ON tournaments(status);
+CREATE INDEX IF NOT EXISTS idx_entries_tournament     ON entries(tournament_id);
+CREATE INDEX IF NOT EXISTS idx_entries_user           ON entries(user_id);
+CREATE INDEX IF NOT EXISTS idx_entries_team           ON entries(team_id);
+CREATE INDEX IF NOT EXISTS idx_team_members_team      ON team_members(team_id);
+CREATE INDEX IF NOT EXISTS idx_team_members_user      ON team_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_teams_tournament       ON teams(tournament_id);
 
 -- ============================================================
 -- UPDATED_AT TRIGGER
