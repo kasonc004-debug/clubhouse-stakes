@@ -6,11 +6,13 @@ import '../models/leaderboard_model.dart';
 
 class LeaderboardData {
   final String format;
+  final String status;
   final List<IndividualEntry> individual;
   final List<FourballEntry> fourball;
 
   const LeaderboardData({
     required this.format,
+    this.status     = 'upcoming',
     this.individual = const [],
     this.fourball   = const [],
   });
@@ -24,14 +26,17 @@ final leaderboardProvider = FutureProvider.family<LeaderboardData, String>(
       final format = resp.data['format'] as String;
       final list   = resp.data['leaderboard'] as List;
 
+      final status = resp.data['status'] as String? ?? 'upcoming';
       if (format == 'individual') {
         return LeaderboardData(
           format:     format,
+          status:     status,
           individual: list.map((e) => IndividualEntry.fromJson(e as Map<String, dynamic>)).toList(),
         );
       } else {
         return LeaderboardData(
           format:   format,
+          status:   status,
           fourball: list.map((e) => FourballEntry.fromJson(e as Map<String, dynamic>)).toList(),
         );
       }

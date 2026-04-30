@@ -81,20 +81,37 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
   Future<void> _confirmScore(int score) async {
     if (_saving) return;
     final wasAtFrontier = _currentHole == _firstUnfilled;
+    final savedHole     = _currentHole;
+    final prevScore     = _scores[_currentHole];
 
     setState(() {
       _scores[_currentHole] = score;
       _saving = true;
     });
 
-    await ref.read(holeUpdateProvider.notifier).update(
+    final ok = await ref.read(holeUpdateProvider.notifier).update(
           tournamentId: widget.tournamentId,
-          holeNumber: _currentHole + 1,
+          holeNumber: savedHole + 1,
           score: score,
         );
 
     if (!mounted) return;
     setState(() => _saving = false);
+
+    if (!ok) {
+      // Revert the local score and show the error
+      setState(() => _scores[savedHole] = prevScore);
+      final err = ref.read(holeUpdateProvider).error?.toString() ??
+          'Could not save — is this tournament active?';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Hole ${savedHole + 1}: $err'),
+        backgroundColor: AppColors.error,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12)),
+      ));
+      return;
+    }
 
     // Auto-advance only when filling the current frontier hole
     if (wasAtFrontier && _firstUnfilled < 18) {
