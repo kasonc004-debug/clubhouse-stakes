@@ -20,6 +20,21 @@ workflows:
     artifacts:
       - mobile/build/ios/iphoneos/Runner.app
 
+  android-debug:
+    name: Android Debug APK (Quick Test)
+    max_build_duration: 30
+    environment:
+      flutter: stable
+    scripts:
+      - name: Get Flutter packages
+        script: cd mobile && flutter pub get
+      - name: Build Android debug APK
+        script: |
+          cd mobile
+          flutter build apk --debug
+    artifacts:
+      - mobile/build/app/outputs/flutter-apk/app-debug.apk
+
   android-release:
     name: Android Release
     max_build_duration: 60
