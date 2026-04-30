@@ -47,13 +47,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/images/
-    - assets/icons/
-  fonts:
-    - family: ClubhouseDisplay
-      fonts:
-        - asset: assets/fonts/PlayfairDisplay-Bold.ttf
-          weight: 700
-        - asset: assets/fonts/PlayfairDisplay-Regular.ttf
-          weight: 400
