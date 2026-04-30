@@ -16,13 +16,13 @@ Color _holeColor(int score, int par) {
 }
 
 String _holeName(int diff) => switch (diff) {
-  <= -2 => 'Eagle',
-  -1 => 'Birdie',
-  0 => 'Par',
-  1 => 'Bogey',
-  2 => 'Dbl Bogey',
-  _ => '+$diff',
-};
+      <= -2 => 'Eagle',
+      -1 => 'Birdie',
+      0 => 'Par',
+      1 => 'Bogey',
+      2 => 'Dbl Bogey',
+      _ => '+$diff',
+    };
 
 class ScoreEntryScreen extends ConsumerStatefulWidget {
   final String tournamentId;
@@ -42,7 +42,6 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
   int get _holesIn => _scores.whereType<int>().length;
   bool get _allFilled => _scores.every((s) => s != null);
 
-  // Index of first null score; 18 if all filled
   int get _firstUnfilled {
     for (var i = 0; i < 18; i++) {
       if (_scores[i] == null) return i;
@@ -74,14 +73,13 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
         return;
       }
     } catch (_) {
-      // No existing score — start fresh
+      // start fresh
     }
     if (mounted) setState(() => _loaded = true);
   }
 
   Future<void> _confirmScore(int score) async {
     if (_saving) return;
-    // Track whether we were at the frontier before saving
     final wasAtFrontier = _currentHole == _firstUnfilled;
 
     setState(() {
@@ -98,45 +96,26 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
     if (!mounted) return;
     setState(() => _saving = false);
 
-    // Only auto-advance when confirming the current frontier hole
-    if (wasAtFrontier) {
-      final next = _firstUnfilled;
-      if (next < 18) {
-        await Future.delayed(const Duration(milliseconds: 280));
-        if (mounted) setState(() => _currentHole = next);
-      }
+    // Auto-advance only when filling the current frontier hole
+    if (wasAtFrontier && _firstUnfilled < 18) {
+      await Future.delayed(const Duration(milliseconds: 280));
+      if (mounted) setState(() => _currentHole = _firstUnfilled.clamp(0, 17));
     }
   }
 
-  Future<void> _submitFinal() async {
-    if (!_allFilled) return;
-    final ok = await ref.read(scoreNotifierProvider.notifier).submit(
-          tournamentId: widget.tournamentId,
-          holeScores: _scores.map((s) => s!).toList(),
-        );
-    if (!mounted) return;
-    if (ok) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Row(children: [
-          Icon(Icons.check_circle, color: Colors.white, size: 18),
-          SizedBox(width: 10),
-          Text('Scorecard submitted!'),
-        ]),
-        backgroundColor: AppColors.success,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ));
-      ref.invalidate(myScoreProvider(widget.tournamentId));
-      context.pop();
-    } else {
-      final err = ref.read(scoreNotifierProvider).error;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(err?.toString() ?? 'Failed to submit'),
-        backgroundColor: AppColors.error,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ));
-    }
+  void _finishScoring() {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: const Row(children: [
+        Icon(Icons.check_circle, color: Colors.white, size: 18),
+        SizedBox(width: 10),
+        Text('Scorecard complete!'),
+      ]),
+      backgroundColor: AppColors.success,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ));
+    ref.invalidate(myScoreProvider(widget.tournamentId));
+    context.pop();
   }
 
   @override
@@ -155,11 +134,12 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
       );
     }
 
-    final submitState = ref.watch(scoreNotifierProvider);
     final holeScore = _scores[_currentHole];
     final par = _pars[_currentHole];
-    final canNext = _currentHole < 17;
-    final showSubmit = _allFilled && _currentHole == 17;
+    // Can advance to next hole only if current hole has a score
+    final canNext = _currentHole < 17 && holeScore != null;
+    // Submit available as soon as all 18 holes are filled
+    final showFinish = _allFilled;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -184,13 +164,39 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
 
           const Divider(height: 1, color: AppColors.divider),
 
+          // ── Finish banner (all holes done) ───────────────────
+          if (showFinish)
+            GestureDetector(
+              onTap: _finishScoring,
+              child: Container(
+                color: const Color(0xFF1B3D2C),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.check_circle, color: Colors.white, size: 18),
+                    SizedBox(width: 10),
+                    Text(
+                      'ALL 18 HOLES COMPLETE — TAP TO FINISH',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
           // ── Active hole entry ────────────────────────────────
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
               child: Column(
                 children: [
-                  // Hole title + par
+                  // Hole title + par + badge
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -200,19 +206,15 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
                             Text(
                               'HOLE ${_currentHole + 1}',
                               style: const TextStyle(
-                                fontSize: 28,
-                                fontWeight: FontWeight.w900,
-                                color: AppColors.textPrimary,
-                              ),
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.w900,
+                                  color: AppColors.textPrimary),
                             ),
-                            Text(
-                              'Par $par',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                color: AppColors.textSecondary,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+                            Text('Par $par',
+                                style: const TextStyle(
+                                    fontSize: 14,
+                                    color: AppColors.textSecondary,
+                                    fontWeight: FontWeight.w600)),
                           ]),
                       if (holeScore != null)
                         _ScoreBadge(score: holeScore, par: par),
@@ -236,8 +238,9 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
                           width: 64,
                           height: 64,
                           decoration: BoxDecoration(
-                            color:
-                                picked ? color : color.withOpacity(0.10),
+                            color: picked
+                                ? color
+                                : color.withOpacity(0.10),
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(
                               color: picked
@@ -249,22 +252,20 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Text(
-                                '$s',
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w900,
-                                  color: picked ? Colors.white : color,
-                                ),
-                              ),
+                              Text('$s',
+                                  style: TextStyle(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w900,
+                                      color: picked
+                                          ? Colors.white
+                                          : color)),
                               Text(
                                 _holeName(s - par),
                                 style: TextStyle(
-                                  fontSize: 9,
-                                  color: picked
-                                      ? Colors.white70
-                                      : color.withOpacity(0.7),
-                                ),
+                                    fontSize: 9,
+                                    color: picked
+                                        ? Colors.white70
+                                        : color.withOpacity(0.7)),
                               ),
                             ],
                           ),
@@ -288,28 +289,32 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
                       ),
                       const SizedBox(width: 10),
                     ],
-                    if (canNext)
+                    if (_currentHole < 17)
                       Expanded(
                         child: _NavButton(
                           label: 'Hole ${_currentHole + 2} →',
-                          onTap: holeScore != null
-                              ? () =>
-                                  setState(() => _currentHole++)
+                          onTap: canNext
+                              ? () => setState(() => _currentHole++)
                               : null,
                           hint: holeScore == null
                               ? 'Enter hole ${_currentHole + 1} first'
                               : null,
                         ),
                       ),
-                    if (showSubmit)
+                    if (_currentHole == 17 && !showFinish)
                       Expanded(
                         child: _NavButton(
-                          label: 'Submit Scorecard',
+                          label: 'Enter hole 18 to finish',
+                          onTap: null,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    if (_currentHole == 17 && showFinish)
+                      Expanded(
+                        child: _NavButton(
+                          label: '✓ Finish Scorecard',
+                          onTap: _finishScoring,
                           color: const Color(0xFFC9A84C),
-                          loading: submitState.isLoading,
-                          onTap: submitState.isLoading
-                              ? null
-                              : _submitFinal,
                         ),
                       ),
                   ]),
@@ -360,48 +365,38 @@ class _ScoreHeader extends StatelessWidget {
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'LIVE SCORING',
-                      style: TextStyle(
-                        color: Color(0xFFC9A84C),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 2,
-                      ),
-                    ),
-                    Text(
-                      'Hole ${currentHole + 1} of 18',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
+                    const Text('LIVE SCORING',
+                        style: TextStyle(
+                            color: Color(0xFFC9A84C),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 2)),
+                    Text('Hole ${currentHole + 1} of 18',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800)),
                   ]),
             ),
             if (saving)
               const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Color(0xFFC9A84C)),
-              ),
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(0xFFC9A84C))),
             const SizedBox(width: 8),
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Text(
-                '$holesIn / 18',
-                style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600),
-              ),
-              Text(
-                gross > 0 ? '$gross gross' : '—',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800),
-              ),
+              Text('$holesIn / 18',
+                  style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600)),
+              Text(gross > 0 ? '$gross gross' : '—',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800)),
             ]),
           ]),
         ),
@@ -453,7 +448,6 @@ class _HoleGrid extends StatelessWidget {
             borderColor = AppColors.divider;
           }
 
-          // Color for filled score text
           Color scoreTextColor;
           if (isCurrent) {
             scoreTextColor = Colors.white;
@@ -478,28 +472,24 @@ class _HoleGrid extends StatelessWidget {
                 border: Border.all(color: borderColor),
               ),
               child: Center(
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                child:
+                    Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text('${i + 1}',
+                      style: TextStyle(
+                          fontSize: 9,
+                          color: isCurrent
+                              ? Colors.white60
+                              : isLocked
+                                  ? AppColors.divider
+                                  : AppColors.textSecondary)),
                   Text(
-                    '${i + 1}',
-                    style: TextStyle(
-                      fontSize: 9,
-                      color: isCurrent
-                          ? Colors.white60
-                          : isLocked
-                              ? AppColors.divider
-                              : AppColors.textSecondary,
-                    ),
-                  ),
-                  Text(
-                    isFilled
-                        ? '$rawScore'
-                        : (isLocked ? '·' : '-'),
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: scoreTextColor,
-                    ),
-                  ),
+                      isFilled
+                          ? '$rawScore'
+                          : (isLocked ? '·' : '-'),
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: scoreTextColor)),
                 ]),
               ),
             ),
@@ -588,28 +578,23 @@ class _NavButton extends StatelessWidget {
                       height: 20,
                       child: CircularProgressIndicator(
                           strokeWidth: 2.5, color: Colors.white))
-                  : Text(
-                      label,
+                  : Text(label,
                       style: TextStyle(
-                        color: outlined
-                            ? const Color(0xFF1B3D2C)
-                            : Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
+                          color: outlined
+                              ? const Color(0xFF1B3D2C)
+                              : Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5)),
             ),
           ),
         ),
         if (hint != null) ...[
           const SizedBox(height: 5),
-          Text(
-            hint!,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-                fontSize: 11, color: AppColors.textSecondary),
-          ),
+          Text(hint!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 11, color: AppColors.textSecondary)),
         ],
       ],
     );

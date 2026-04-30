@@ -185,11 +185,15 @@ class HomeScreen extends ConsumerWidget {
             delegate: SliverChildBuilderDelegate(
               (context, i) {
                 final t = tournaments[i];
+                final isActive = t.status == 'active';
                 return _MatchCard(
                   tournament: t,
-                  onTap: () => context.push('/tournament/${t.id}'),
+                  // Active tournaments go straight to scoring
+                  onTap: isActive
+                      ? () => context.push('/tournament/${t.id}/score')
+                      : () => context.push('/tournament/${t.id}'),
                   enrolled: true,
-                  onScoreTap: t.status == 'active'
+                  onScoreTap: isActive
                       ? () => context.push('/tournament/${t.id}/score')
                       : null,
                 );
