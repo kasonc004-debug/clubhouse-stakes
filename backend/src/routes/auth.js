@@ -16,8 +16,6 @@ router.post('/login',
   ctrl.login
 );
 
-router.post('/apple', ctrl.appleSignIn);
-
 router.get('/me',     requireAuth, ctrl.getMe);
 router.patch('/me',   requireAuth, ctrl.updateMe);
 router.get('/stats',  requireAuth, ctrl.getMyStats);

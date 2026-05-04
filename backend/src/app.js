@@ -12,6 +12,10 @@ const scoreRoutes       = require('./routes/scores');
 const leaderboardRoutes = require('./routes/leaderboard');
 const adminRoutes       = require('./routes/admin');
 const userRoutes        = require('./routes/users');
+const courseRoutes      = require('./routes/courses');
+const clubhouseRoutes   = require('./routes/clubhouses');
+const uploadRoutes      = require('./routes/uploads');
+const notificationRoutes = require('./routes/notifications');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -70,6 +74,10 @@ app.use('/api/scores',       apiLimiter,  scoreRoutes);
 app.use('/api/leaderboard',  apiLimiter,  leaderboardRoutes);
 app.use('/api/admin',        apiLimiter,  adminRoutes);
 app.use('/api/users',        apiLimiter,  userRoutes);
+app.use('/api/courses',      apiLimiter,  courseRoutes);
+app.use('/api/clubhouses',   apiLimiter,  clubhouseRoutes);
+app.use('/api/uploads',      apiLimiter,  uploadRoutes);
+app.use('/api/notifications',apiLimiter,  notificationRoutes);
 
 // ── Health check ────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ status: 'ok', version: '1.0.0' }));
@@ -80,6 +88,24 @@ app.use((err, _req, res, _next) => {
   res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
 });
 
-app.listen(PORT, () => console.log(`Clubhouse Stakes API listening on port ${PORT}`));
+// Warn about optional services that are unconfigured. Start-up still succeeds —
+// these features just degrade gracefully (course search returns 500, email
+// invites get logged instead of sent).
+function logOptionalServiceWarnings() {
+  if (!process.env.GOLFCOURSE_API_KEY) {
+    console.warn('[boot] GOLFCOURSE_API_KEY is not set — course search will fail until configured.');
+  }
+  if (!process.env.SMTP_HOST) {
+    console.warn('[boot] SMTP_HOST is not set — clubhouse email invites will be logged to the console instead of sent.');
+  }
+  if (!process.env.APP_PUBLIC_URL) {
+    console.warn('[boot] APP_PUBLIC_URL is not set — invite emails will omit the signup link.');
+  }
+}
+
+app.listen(PORT, () => {
+  console.log(`Clubhouse Stakes API listening on port ${PORT}`);
+  logOptionalServiceWarnings();
+});
 
 module.exports = app;

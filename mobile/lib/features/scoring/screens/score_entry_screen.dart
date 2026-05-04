@@ -2,11 +2,114 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../auth/providers/auth_provider.dart';
+import '../../teams/providers/team_provider.dart';
+import '../../tournaments/providers/tournament_provider.dart';
 import '../providers/score_provider.dart';
+import 'team_score_entry_screen.dart';
+import 'team_score_view_screen.dart';
 
-const List<int> _pars = [4, 4, 3, 4, 5, 3, 4, 4, 5, 4, 3, 4, 5, 4, 3, 4, 5, 4];
+const List<int> _defaultPars = [4, 4, 3, 4, 5, 3, 4, 4, 5, 4, 3, 4, 5, 4, 3, 4, 5, 4];
 
-Color _holeColor(int score, int par) {
+/// Route entry. Decides which scoring UI to show based on tournament format
+/// and the user's role on their team (designated scorer vs. teammate).
+class ScoreEntryRouter extends ConsumerWidget {
+  final String tournamentId;
+  const ScoreEntryRouter({super.key, required this.tournamentId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tournamentAsync = ref.watch(tournamentDetailProvider(tournamentId));
+    return tournamentAsync.when(
+      loading: () => const _LoadingScaffold(),
+      error: (e, _) => Scaffold(
+        appBar: AppBar(title: const Text('Live Scoring')),
+        body: Center(child: Text('Error: $e')),
+      ),
+      data: (t) {
+        final pars     = t.pars ?? _defaultPars;
+        final yardages = t.yardages;
+        if (!t.isTeamFormat) {
+          return ScoreEntryScreen(
+            tournamentId: tournamentId,
+            pars: pars,
+            yardages: yardages,
+          );
+        }
+        // Team format — load team to pick the right view.
+        final teamAsync = ref.watch(myTeamProvider(tournamentId));
+        final me = ref.watch(authProvider).user;
+        return teamAsync.when(
+          loading: () => const _LoadingScaffold(),
+          error: (e, _) => Scaffold(
+            appBar: AppBar(title: const Text('Live Scoring')),
+            body: Center(child: Text('Error: $e')),
+          ),
+          data: (team) {
+            if (team == null || me == null) {
+              return ScoreEntryScreen(
+                tournamentId: tournamentId,
+                pars: pars,
+                yardages: yardages,
+              );
+            }
+            final isScorer = team.isScorer(me.id);
+            if (t.isScramble) {
+              if (isScorer) {
+                // Scramble = one shared team scorecard kept by the scorer —
+                // reuse the individual screen since they enter one row of scores.
+                return ScoreEntryScreen(
+                  tournamentId: tournamentId,
+                  pars: pars,
+                  yardages: yardages,
+                );
+              }
+              return TeamScoreViewScreen(
+                tournamentId: tournamentId,
+                team: team,
+                pars: pars,
+                isScramble: true,
+              );
+            }
+            // Fourball
+            if (isScorer) {
+              return TeamScoreEntryScreen(
+                tournamentId: tournamentId,
+                team: team,
+                pars: pars,
+                yardages: yardages,
+              );
+            }
+            return TeamScoreViewScreen(
+              tournamentId: tournamentId,
+              team: team,
+              pars: pars,
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _LoadingScaffold extends StatelessWidget {
+  const _LoadingScaffold();
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF1B3D2C),
+          foregroundColor: Colors.white,
+          title: const Text('Live Scoring',
+              style: TextStyle(fontWeight: FontWeight.w800)),
+        ),
+        body: const Center(
+            child: CircularProgressIndicator(color: AppColors.primary)),
+      );
+}
+
+Color holeColor(int score, int par) {
   final d = score - par;
   if (d <= -2) return const Color(0xFF7B1FA2);
   if (d == -1) return const Color(0xFF1565C0);
@@ -15,7 +118,7 @@ Color _holeColor(int score, int par) {
   return AppColors.error;
 }
 
-String _holeName(int diff) => switch (diff) {
+String holeName(int diff) => switch (diff) {
       <= -2 => 'Eagle',
       -1 => 'Birdie',
       0 => 'Par',
@@ -26,7 +129,14 @@ String _holeName(int diff) => switch (diff) {
 
 class ScoreEntryScreen extends ConsumerStatefulWidget {
   final String tournamentId;
-  const ScoreEntryScreen({super.key, required this.tournamentId});
+  final List<int> pars;
+  final List<int>? yardages;
+  const ScoreEntryScreen({
+    super.key,
+    required this.tournamentId,
+    this.pars = _defaultPars,
+    this.yardages,
+  });
 
   @override
   ConsumerState<ScoreEntryScreen> createState() => _ScoreEntryScreenState();
@@ -152,7 +262,7 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
     }
 
     final holeScore = _scores[_currentHole];
-    final par = _pars[_currentHole];
+    final par = widget.pars[_currentHole];
     // Can advance to next hole only if current hole has a score
     final canNext = _currentHole < 17 && holeScore != null;
     // Submit available as soon as all 18 holes are filled
@@ -174,6 +284,7 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
           // ── Hole navigation grid ─────────────────────────────
           _HoleGrid(
             scores: _scores,
+            pars: widget.pars,
             currentHole: _currentHole,
             firstUnfilled: _firstUnfilled,
             onTap: (i) => setState(() => _currentHole = i),
@@ -213,7 +324,7 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
               child: Column(
                 children: [
-                  // Hole title + par + badge
+                  // Hole title + par/yardage + badge
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -227,11 +338,33 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
                                   fontWeight: FontWeight.w900,
                                   color: AppColors.textPrimary),
                             ),
-                            Text('Par $par',
-                                style: const TextStyle(
-                                    fontSize: 14,
-                                    color: AppColors.textSecondary,
-                                    fontWeight: FontWeight.w600)),
+                            Row(children: [
+                              Text('Par $par',
+                                  style: const TextStyle(
+                                      fontSize: 14,
+                                      color: AppColors.textSecondary,
+                                      fontWeight: FontWeight.w600)),
+                              if (widget.yardages != null &&
+                                  _currentHole < widget.yardages!.length &&
+                                  widget.yardages![_currentHole] > 0) ...[
+                                const SizedBox(width: 10),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withOpacity(0.10),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    '${widget.yardages![_currentHole]} yds',
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.primary),
+                                  ),
+                                ),
+                              ],
+                            ]),
                           ]),
                       if (holeScore != null)
                         _ScoreBadge(score: holeScore, par: par),
@@ -246,7 +379,7 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
                     alignment: WrapAlignment.center,
                     children: List.generate(10, (i) {
                       final s = i + 1;
-                      final color = _holeColor(s, par);
+                      final color = holeColor(s, par);
                       final picked = holeScore == s;
                       return GestureDetector(
                         onTap: _saving ? null : () => _confirmScore(s),
@@ -277,7 +410,7 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
                                           ? Colors.white
                                           : color)),
                               Text(
-                                _holeName(s - par),
+                                holeName(s - par),
                                 style: TextStyle(
                                     fontSize: 9,
                                     color: picked
@@ -425,10 +558,12 @@ class _ScoreHeader extends StatelessWidget {
 // ── Hole grid ─────────────────────────────────────────────────────────────────
 class _HoleGrid extends StatelessWidget {
   final List<int?> scores;
+  final List<int> pars;
   final int currentHole, firstUnfilled;
   final ValueChanged<int> onTap;
   const _HoleGrid({
     required this.scores,
+    required this.pars,
     required this.currentHole,
     required this.firstUnfilled,
     required this.onTap,
@@ -448,7 +583,7 @@ class _HoleGrid extends StatelessWidget {
           final rawScore = scores[i];
           final isFilled = rawScore != null;
           final isLocked = i > firstUnfilled;
-          final par = _pars[i];
+          final par = pars[i];
 
           Color bg, borderColor;
           if (isCurrent) {
@@ -469,7 +604,7 @@ class _HoleGrid extends StatelessWidget {
           if (isCurrent) {
             scoreTextColor = Colors.white;
           } else if (isFilled) {
-            scoreTextColor = _holeColor(rawScore, par);
+            scoreTextColor = holeColor(rawScore, par);
           } else if (isLocked) {
             scoreTextColor = AppColors.divider;
           } else {
@@ -552,14 +687,13 @@ class _ScoreBadge extends StatelessWidget {
 class _NavButton extends StatelessWidget {
   final String label;
   final VoidCallback? onTap;
-  final bool outlined, loading;
+  final bool outlined;
   final Color? color;
   final String? hint;
   const _NavButton({
     required this.label,
     this.onTap,
     this.outlined = false,
-    this.loading = false,
     this.color,
     this.hint,
   });
@@ -567,7 +701,7 @@ class _NavButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bg = color ?? const Color(0xFF1B3D2C);
-    final enabled = onTap != null && !loading;
+    final enabled = onTap != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -589,20 +723,14 @@ class _NavButton extends StatelessWidget {
                   : null,
             ),
             child: Center(
-              child: loading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2.5, color: Colors.white))
-                  : Text(label,
-                      style: TextStyle(
-                          color: outlined
-                              ? const Color(0xFF1B3D2C)
-                              : Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.5)),
+              child: Text(label,
+                  style: TextStyle(
+                      color: outlined
+                          ? const Color(0xFF1B3D2C)
+                          : Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.5)),
             ),
           ),
         ),

@@ -69,9 +69,12 @@ async function getMyScore(req, res) {
 }
 
 // PATCH /api/scores/:tournament_id/hole
+// Body: { hole_number, score, target_user_id? }
+// target_user_id: when present, the requester must be the designated scorer
+// of the target user's team (fourball only).
 async function updateHoleScore(req, res) {
   const { tournament_id } = req.params;
-  const { hole_number, score } = req.body;
+  const { hole_number, score, target_user_id } = req.body;
   const userId = req.user.id;
 
   const holeNum   = parseInt(hole_number, 10);
@@ -90,11 +93,26 @@ async function updateHoleScore(req, res) {
     if (tRows[0].status !== 'active')
       return res.status(400).json({ error: 'Tournament is not active' });
 
+    // Resolve target — self by default, teammate if requester is team scorer.
+    const targetId = target_user_id && target_user_id !== userId ? target_user_id : userId;
+
+    if (targetId !== userId) {
+      const { rows: authRows } = await db.query(
+        `SELECT t.id
+         FROM teams t
+         JOIN team_members tm_target ON tm_target.team_id = t.id AND tm_target.user_id = $1
+         WHERE t.tournament_id = $2 AND t.scorer_id = $3`,
+        [targetId, tournament_id, userId]
+      );
+      if (!authRows.length)
+        return res.status(403).json({ error: 'Only the designated team scorer can enter scores for a teammate' });
+    }
+
     const { rows: eRows } = await db.query(
       `SELECT e.id, e.hole_scores, u.handicap
        FROM entries e JOIN users u ON u.id = e.user_id
        WHERE e.user_id = $1 AND e.tournament_id = $2`,
-      [userId, tournament_id]
+      [targetId, tournament_id]
     );
     if (!eRows.length) return res.status(404).json({ error: 'Entry not found' });
 

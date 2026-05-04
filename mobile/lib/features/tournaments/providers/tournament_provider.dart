@@ -20,6 +20,20 @@ final tournamentsProvider = FutureProvider.family<List<TournamentModel>, String?
   },
 );
 
+// ── All tournaments (admin — no status filter) ───────────────────────────────
+final allTournamentsProvider = FutureProvider.autoDispose<List<TournamentModel>>(
+  (ref) async {
+    final api = ref.read(apiClientProvider);
+    try {
+      final resp = await api.get(ApiConstants.tournaments);
+      final list = resp.data['tournaments'] as List;
+      return list.map((e) => TournamentModel.fromJson(e as Map<String, dynamic>)).toList();
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
+    }
+  },
+);
+
 // ── Active / live tournaments ────────────────────────────────────────────────
 final activeTournamentsProvider = FutureProvider.autoDispose<List<TournamentModel>>(
   (ref) async {
@@ -61,6 +75,51 @@ final myTournamentsProvider = FutureProvider.autoDispose<List<TournamentModel>>(
     }
   },
 );
+
+// ── Participants (publicly visible roster) ───────────────────────────────────
+class TournamentParticipant {
+  final String id;
+  final String name;
+  final String? profilePictureUrl;
+  final double? handicap;
+  final String? city;
+  final String? teamId;
+
+  const TournamentParticipant({
+    required this.id,
+    required this.name,
+    this.profilePictureUrl,
+    this.handicap,
+    this.city,
+    this.teamId,
+  });
+
+  factory TournamentParticipant.fromJson(Map<String, dynamic> json) =>
+      TournamentParticipant(
+        id:                json['id'] as String,
+        name:              json['name'] as String? ?? 'Golfer',
+        profilePictureUrl: json['profile_picture_url'] as String?,
+        handicap:          json['handicap'] == null
+            ? null
+            : double.tryParse(json['handicap'].toString()),
+        city:              json['city'] as String?,
+        teamId:            json['team_id'] as String?,
+      );
+}
+
+final participantsProvider =
+    FutureProvider.family<List<TournamentParticipant>, String>((ref, id) async {
+  final api = ref.read(apiClientProvider);
+  try {
+    final resp = await api.get(ApiConstants.participants(id));
+    final list = resp.data['participants'] as List;
+    return list
+        .map((e) => TournamentParticipant.fromJson(e as Map<String, dynamic>))
+        .toList();
+  } on DioException catch (e) {
+    throw ApiException.fromDio(e);
+  }
+});
 
 // ── Single tournament ────────────────────────────────────────────────────────
 final tournamentDetailProvider = FutureProvider.family<TournamentModel, String>(

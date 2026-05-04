@@ -4,6 +4,21 @@ import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
 import '../models/team_model.dart';
 
+// ── My team for a tournament (fourball) ─────────────────────
+final myTeamProvider = FutureProvider.family<TeamModel?, String>(
+  (ref, tournamentId) async {
+    final api = ref.read(apiClientProvider);
+    try {
+      final resp = await api.get(ApiConstants.myTeam,
+          queryParams: {'tournament_id': tournamentId});
+      return TeamModel.fromJson(resp.data['team'] as Map<String, dynamic>);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      throw ApiException.fromDio(e);
+    }
+  },
+);
+
 // ── List of teams for a tournament ──────────────────────────
 final teamsProvider = FutureProvider.family<List<TeamModel>, ({String tournamentId, bool openOnly})>(
   (ref, args) async {

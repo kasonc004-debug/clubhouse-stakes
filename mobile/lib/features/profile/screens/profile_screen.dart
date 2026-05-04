@@ -1,8 +1,10 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/network/image_uploader.dart';
 import '../../../core/widgets/cs_button.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../auth/providers/stats_provider.dart';
@@ -40,6 +42,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     super.dispose();
   }
 
+  bool _uploadingAvatar = false;
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     final handicap =
@@ -50,6 +54,32 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       city:     _cityCtrl.text.trim().isEmpty ? null : _cityCtrl.text.trim(),
     );
     if (ok && mounted) setState(() => _editing = false);
+  }
+
+  Future<void> _pickAvatar() async {
+    setState(() => _uploadingAvatar = true);
+    try {
+      final url = await ref.read(imageUploaderProvider).pickAndUpload(maxWidth: 800);
+      if (!mounted || url == null) return;
+      final ok = await ref.read(authProvider.notifier).updateProfile(
+            profilePictureUrl: url,
+          );
+      if (!mounted) return;
+      if (!ok) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Couldn\'t save profile picture'),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Upload failed: $e'),
+        backgroundColor: AppColors.error,
+      ));
+    } finally {
+      if (mounted) setState(() => _uploadingAvatar = false);
+    }
   }
 
   @override
@@ -66,8 +96,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             child: _ProfileHeader(
               user: user,
               editing: _editing,
+              uploadingAvatar: _uploadingAvatar,
               onEditTap: () => setState(() => _editing = true),
               onBackTap: () => context.pop(),
+              onAvatarTap: _uploadingAvatar ? null : _pickAvatar,
             ),
           ),
 
@@ -130,14 +162,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 class _ProfileHeader extends StatelessWidget {
   final dynamic user;
   final bool editing;
+  final bool uploadingAvatar;
   final VoidCallback onEditTap;
   final VoidCallback onBackTap;
+  final VoidCallback? onAvatarTap;
 
   const _ProfileHeader({
     required this.user,
     required this.editing,
+    required this.uploadingAvatar,
     required this.onEditTap,
     required this.onBackTap,
+    required this.onAvatarTap,
   });
 
   @override
@@ -188,40 +224,64 @@ class _ProfileHeader extends StatelessWidget {
               const SizedBox(height: 20),
 
               // Avatar
-              Stack(
-                alignment: Alignment.bottomRight,
-                children: [
-                  Container(
-                    width: 88,
-                    height: 88,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(0.15),
-                      border: Border.all(
-                          color: const Color(0xFFC9A84C), width: 2),
-                    ),
-                    child: Center(
-                      child: Text(
-                        user.name.substring(0, 1).toUpperCase(),
-                        style: const TextStyle(
-                          fontSize: 38,
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                        ),
+              GestureDetector(
+                onTap: onAvatarTap,
+                child: Stack(
+                  alignment: Alignment.bottomRight,
+                  children: [
+                    Container(
+                      width: 88,
+                      height: 88,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withOpacity(0.15),
+                        border: Border.all(
+                            color: const Color(0xFFC9A84C), width: 2),
                       ),
+                      clipBehavior: Clip.antiAlias,
+                      child: (user.profilePictureUrl != null &&
+                              (user.profilePictureUrl as String).isNotEmpty)
+                          ? CachedNetworkImage(
+                              imageUrl: user.profilePictureUrl!,
+                              fit: BoxFit.cover,
+                              errorWidget: (_, __, ___) => Center(
+                                child: Text(
+                                  user.name.substring(0, 1).toUpperCase(),
+                                  style: const TextStyle(
+                                    fontSize: 38,
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : Center(
+                              child: Text(
+                                user.name.substring(0, 1).toUpperCase(),
+                                style: const TextStyle(
+                                  fontSize: 38,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
                     ),
-                  ),
-                  if (editing)
                     Container(
                       padding: const EdgeInsets.all(6),
                       decoration: const BoxDecoration(
                         color: Color(0xFFC9A84C),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.camera_alt,
-                          size: 14, color: Colors.black87),
+                      child: uploadingAvatar
+                          ? const SizedBox(
+                              width: 14, height: 14,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.black87))
+                          : const Icon(Icons.camera_alt,
+                              size: 14, color: Colors.black87),
                     ),
-                ],
+                  ],
+                ),
               ),
               const SizedBox(height: 12),
 

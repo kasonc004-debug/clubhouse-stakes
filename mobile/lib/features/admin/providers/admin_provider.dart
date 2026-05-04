@@ -108,3 +108,38 @@ final updateStatusProvider = StateNotifierProvider.autoDispose
     .family<UpdateStatusNotifier, AsyncValue<void>, String>((ref, _) {
   return UpdateStatusNotifier(ref.read(apiClientProvider));
 });
+
+// ── Payment status update (pay-at-course flow) ───────────────────────────────
+
+class AdminPaymentNotifier extends StateNotifier<AsyncValue<void>> {
+  final ApiClient _api;
+  AdminPaymentNotifier(this._api) : super(const AsyncData(null));
+
+  Future<bool> update({
+    required String tournamentId,
+    required String entryId,
+    String? paymentStatus,
+    String? skinsPaymentStatus,
+  }) async {
+    state = const AsyncLoading();
+    try {
+      await _api.patch(
+        ApiConstants.adminUpdatePayment(tournamentId, entryId),
+        data: {
+          if (paymentStatus != null) 'payment_status': paymentStatus,
+          if (skinsPaymentStatus != null) 'skins_payment_status': skinsPaymentStatus,
+        },
+      );
+      state = const AsyncData(null);
+      return true;
+    } on DioException catch (e) {
+      state = AsyncError(ApiException.fromDio(e), StackTrace.current);
+      return false;
+    }
+  }
+}
+
+final adminPaymentProvider = StateNotifierProvider.autoDispose
+    .family<AdminPaymentNotifier, AsyncValue<void>, String>((ref, _) {
+  return AdminPaymentNotifier(ref.read(apiClientProvider));
+});

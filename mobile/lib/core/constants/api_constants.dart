@@ -11,7 +11,6 @@ class ApiConstants {
   // Auth
   static const String signup    = '/auth/signup';
   static const String login     = '/auth/login';
-  static const String apple     = '/auth/apple';
   static const String me        = '/auth/me';
   static const String myStats   = '/auth/stats';
 
@@ -25,6 +24,7 @@ class ApiConstants {
 
   // Teams
   static const String teams       = '/teams';
+  static const String myTeam      = '/teams/mine';
   static const String createTeam  = '/teams/create';
   static String joinTeam(String id) => '/teams/$id/join';
 
@@ -36,6 +36,7 @@ class ApiConstants {
   // Leaderboard
   static String leaderboard(String tournamentId)      => '/leaderboard/$tournamentId';
   static String skinsLeaderboard(String tournamentId) => '/leaderboard/$tournamentId/skins';
+  static const String bestRounds                      = '/leaderboard/best-rounds';
 
   // Users
   static const String userSearch              = '/users/search';
@@ -43,10 +44,34 @@ class ApiConstants {
   static String userProfile(String id)        => '/users/$id';
   static String userStats(String id)          => '/users/$id/stats';
 
+  // Courses (golfcourseapi proxy)
+  static const String courseSearch = '/courses/search';
+  static String courseById(String id) => '/courses/$id';
+
+  // Uploads
+  static const String uploadImage = '/uploads/image';
+
+  // Notifications
+  static const String notifications        = '/notifications';
+  static const String markAllNotifications = '/notifications/read-all';
+  static String markNotificationRead(String id) => '/notifications/$id/read';
+
+  // Clubhouse membership
+  static String clubhouseFollow(String id)         => '/clubhouses/$id/follow';
+  static String clubhouseAcceptInvite(String id)   => '/clubhouses/$id/accept-invite';
+  static String clubhouseInvite(String id)         => '/clubhouses/$id/invite';
+
+  // Clubhouses
+  static const String clubhouses     = '/clubhouses';
+  static const String myClubhouses   = '/clubhouses/mine';
+  static String clubhouseBySlug(String slug) => '/clubhouses/$slug';
+  static String clubhouseById(String id)     => '/clubhouses/$id';
+
   // Admin
   static const String adminTournaments = '/admin/tournaments';
   static String adminUpdateTournament(String id)    => '/admin/tournaments/$id';
   static String adminParticipants(String id)        => '/admin/tournaments/$id/participants';
   static String adminFinancials(String id)           => '/admin/tournaments/$id/financials';
   static String adminUpdateScore(String id, String entryId) => '/admin/tournaments/$id/scores/$entryId';
+  static String adminUpdatePayment(String id, String entryId) => '/admin/tournaments/$id/entries/$entryId/payment';
 }

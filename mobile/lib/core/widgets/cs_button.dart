@@ -53,28 +53,3 @@ class CSButton extends StatelessWidget {
     );
   }
 }
-
-class AppleSignInButton extends StatelessWidget {
-  final VoidCallback? onPressed;
-  final bool loading;
-
-  const AppleSignInButton({super.key, this.onPressed, this.loading = false});
-
-  @override
-  Widget build(BuildContext context) {
-    return ElevatedButton.icon(
-      onPressed: loading ? null : onPressed,
-      icon: const Icon(Icons.apple, size: 22),
-      label: loading
-          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-          : const Text('Continue with Apple'),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        minimumSize: const Size(double.infinity, 52),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-      ),
-    );
-  }
-}

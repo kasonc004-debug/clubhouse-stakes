@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/widgets/cs_button.dart';
 import '../../../core/widgets/loading_overlay.dart';
 import '../../tournaments/providers/tournament_provider.dart';
 import '../../tournaments/models/tournament_model.dart';
@@ -12,13 +11,20 @@ class AdminScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tournamentsAsync = ref.watch(tournamentsProvider(null));
+    final tournamentsAsync = ref.watch(allTournamentsProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Admin Dashboard'),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            tooltip: 'My Clubhouses',
+            icon: const Icon(Icons.flag_outlined),
+            onPressed: () => context.push('/clubhouses/mine'),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/admin/create-tournament'),
@@ -37,10 +43,17 @@ class AdminScreen extends ConsumerWidget {
               subtitle: 'Create your first tournament using the button below.',
             );
           }
+          // Sort: active → upcoming → completed; date asc within group.
+          int rank(String s) => switch (s) { 'active' => 0, 'upcoming' => 1, _ => 2 };
+          final sorted = [...tournaments]
+            ..sort((a, b) {
+              final r = rank(a.status).compareTo(rank(b.status));
+              return r != 0 ? r : a.date.compareTo(b.date);
+            });
           return ListView.builder(
             padding: const EdgeInsets.only(bottom: 100),
-            itemCount: tournaments.length,
-            itemBuilder: (context, i) => _AdminTournamentTile(tournament: tournaments[i]),
+            itemCount: sorted.length,
+            itemBuilder: (context, i) => _AdminTournamentTile(tournament: sorted[i]),
           );
         },
       ),
@@ -82,7 +95,7 @@ class _AdminTournamentTile extends StatelessWidget {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('${t.city} · ${t.format}', style: const TextStyle(fontSize: 12)),
+            Text('${t.city} · ${t.formatLabel}', style: const TextStyle(fontSize: 12)),
             Text('${t.playerCount}/${t.maxPlayers} players · \$${t.purse.toStringAsFixed(0)} purse',
               style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
           ],

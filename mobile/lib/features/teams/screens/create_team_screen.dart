@@ -6,6 +6,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/widgets/cs_button.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../players/providers/player_provider.dart';
+import '../../tournaments/providers/tournament_provider.dart';
 import '../providers/team_provider.dart';
 
 class CreateTeamScreen extends ConsumerStatefulWidget {
@@ -56,15 +57,96 @@ class _CreateTeamScreenState extends ConsumerState<CreateTeamScreen> {
   }
 
   Future<void> _register() async {
+    // Pay-at-course confirm.
+    final t = ref.read(tournamentDetailProvider(widget.tournamentId)).valueOrNull;
+    if (t != null && t.signUpFee > 0) {
+      final players = (_selectedPartner != null) ? 2 : 1;
+      final feeLabel = t.feePer == 'team'
+          ? 'Team entry'
+          : '${players == 2 ? 'Both players' : 'Your'} entry';
+      final amount = t.feePer == 'team' ? t.signUpFee : t.signUpFee * players;
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16)),
+          title: const Text('Confirm registration'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.07),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(feeLabel,
+                        style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.5,
+                            color: AppColors.textSecondary)),
+                    const SizedBox(height: 4),
+                    Text('\$${amount.toStringAsFixed(0)}',
+                        style: const TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.primary)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Online payments aren\'t live yet. By confirming you reserve the '
+                'team\'s spot and agree to pay at check-in. The host will mark '
+                'each player as paid once they collect.',
+                style: TextStyle(fontSize: 13, height: 1.4),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Confirm — pay at course'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+    }
+
     final team = await ref.read(createTeamProvider.notifier).create(
       tournamentId: widget.tournamentId,
       name:         _nameCtrl.text.trim(),
       partnerId:    _selectedPartner?.id,
     );
     if (team != null && mounted) {
+      // Bust every view that might be looking at this tournament's roster.
+      ref.invalidate(teamsProvider((tournamentId: widget.tournamentId, openOnly: true)));
+      ref.invalidate(teamsProvider((tournamentId: widget.tournamentId, openOnly: false)));
+      ref.invalidate(myTeamProvider(widget.tournamentId));
+      ref.invalidate(tournamentDetailProvider(widget.tournamentId));
+      ref.invalidate(participantsProvider(widget.tournamentId));
+      ref.invalidate(myTournamentsProvider);
+      ref.invalidate(tournamentsProvider);
+
       final msg = _selectedPartner != null
           ? 'Team registered! You and ${_selectedPartner!.name} are in.'
-          : 'Team created! Your partner can join from the tournament page.';
+          : 'Team created! Teammates can join from the tournament page.';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(msg),
         backgroundColor: AppColors.success,
@@ -79,6 +161,8 @@ class _CreateTeamScreenState extends ConsumerState<CreateTeamScreen> {
   Widget build(BuildContext context) {
     final createState = ref.watch(createTeamProvider);
     final currentUserId = ref.watch(authProvider).user?.id ?? '';
+    final tournament = ref.watch(tournamentDetailProvider(widget.tournamentId)).valueOrNull;
+    final isScramble = tournament?.isScramble ?? false;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -104,16 +188,20 @@ class _CreateTeamScreenState extends ConsumerState<CreateTeamScreen> {
                     padding: const EdgeInsets.fromLTRB(20, 56, 20, 16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text('Register as a Team',
+                      children: [
+                        const Text('Register as a Team',
                             style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 22,
                                 fontWeight: FontWeight.w900)),
-                        SizedBox(height: 4),
-                        Text('Add your partner to register both of you at once',
-                            style: TextStyle(
-                                color: Colors.white70, fontSize: 13)),
+                        const SizedBox(height: 4),
+                        Text(
+                          isScramble
+                              ? 'Add a teammate now or invite up to 3 more after.'
+                              : 'Add your partner to register both of you at once',
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 13),
+                        ),
                       ],
                     ),
                   ),
@@ -142,12 +230,15 @@ class _CreateTeamScreenState extends ConsumerState<CreateTeamScreen> {
 
                   const SizedBox(height: 28),
 
-                  // ── Partner section ────────────────────────────
-                  _SectionLabel('YOUR PARTNER'),
+                  // ── Partner / teammate section ────────────────
+                  _SectionLabel(isScramble ? 'INVITE A TEAMMATE' : 'YOUR PARTNER'),
                   const SizedBox(height: 4),
-                  const Text(
-                    'Search for your partner by name. They must already have an account.',
-                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                  Text(
+                    isScramble
+                        ? 'Add one teammate now and the rest can join from the tournament page (up to 4 total).'
+                        : 'Search for your partner by name. They must already have an account.',
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary),
                   ),
                   const SizedBox(height: 12),
 

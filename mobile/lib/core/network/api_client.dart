@@ -43,6 +43,10 @@ class ApiClient {
       _dio.patch(path, data: data);
 
   Future<Response> delete(String path) => _dio.delete(path);
+
+  // Multipart upload — returns the parsed response.
+  Future<Response> upload(String path, FormData data) =>
+      _dio.post(path, data: data);
 }
 
 // Typed API error

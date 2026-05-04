@@ -1,6 +1,118 @@
 double _d(dynamic v) => double.tryParse(v?.toString() ?? '') ?? 0;
 int    _i(dynamic v) => int.tryParse(v?.toString() ?? '0') ?? 0;
 
+// ── Best rounds (record book) ────────────────────────────────────────────────
+
+class BestIndividualRound {
+  final String userId;
+  final String name;
+  final String? profilePictureUrl;
+  final double handicap;
+  final int grossScore;
+  final double? netScore;
+  final String tournamentId;
+  final String tournamentName;
+  final String? courseName;
+  final DateTime date;
+
+  const BestIndividualRound({
+    required this.userId,
+    required this.name,
+    this.profilePictureUrl,
+    required this.handicap,
+    required this.grossScore,
+    this.netScore,
+    required this.tournamentId,
+    required this.tournamentName,
+    this.courseName,
+    required this.date,
+  });
+
+  factory BestIndividualRound.fromJson(Map<String, dynamic> j) =>
+      BestIndividualRound(
+        userId:            j['user_id'] as String,
+        name:              j['name'] as String? ?? 'Golfer',
+        profilePictureUrl: j['profile_picture_url'] as String?,
+        handicap:          _d(j['handicap']),
+        grossScore:        _i(j['gross_score']),
+        netScore:          j['net_score'] == null ? null : _d(j['net_score']),
+        tournamentId:      j['tournament_id'] as String,
+        tournamentName:    j['tournament_name'] as String? ?? 'Tournament',
+        courseName:        j['course_name'] as String?,
+        date:              DateTime.parse(j['date'] as String),
+      );
+}
+
+class BestFourballRoundPlayer {
+  final String userId;
+  final String name;
+  final double handicap;
+
+  const BestFourballRoundPlayer({
+    required this.userId,
+    required this.name,
+    required this.handicap,
+  });
+
+  factory BestFourballRoundPlayer.fromJson(Map<String, dynamic> j) =>
+      BestFourballRoundPlayer(
+        userId:   j['user_id'] as String,
+        name:     j['name']    as String? ?? 'Golfer',
+        handicap: _d(j['handicap']),
+      );
+}
+
+class BestFourballRound {
+  final String tournamentId;
+  final String tournamentName;
+  final String? courseName;
+  final DateTime date;
+  final String teamId;
+  final String teamName;
+  final double netTotal;
+  final List<BestFourballRoundPlayer> players;
+
+  const BestFourballRound({
+    required this.tournamentId,
+    required this.tournamentName,
+    this.courseName,
+    required this.date,
+    required this.teamId,
+    required this.teamName,
+    required this.netTotal,
+    required this.players,
+  });
+
+  factory BestFourballRound.fromJson(Map<String, dynamic> j) => BestFourballRound(
+        tournamentId:   j['tournament_id']   as String,
+        tournamentName: j['tournament_name'] as String? ?? 'Tournament',
+        courseName:     j['course_name']     as String?,
+        date:           DateTime.parse(j['date'] as String),
+        teamId:         j['team_id']  as String,
+        teamName:       j['team_name'] as String? ?? 'Team',
+        netTotal:       _d(j['net_total']),
+        players:        (j['players'] as List? ?? [])
+                          .map((e) => BestFourballRoundPlayer.fromJson(e as Map<String, dynamic>))
+                          .toList(),
+      );
+}
+
+class BestRoundsData {
+  final List<BestIndividualRound> individual;
+  final List<BestFourballRound>   fourball;
+
+  const BestRoundsData({required this.individual, required this.fourball});
+
+  factory BestRoundsData.fromJson(Map<String, dynamic> j) => BestRoundsData(
+        individual: (j['individual'] as List? ?? [])
+                       .map((e) => BestIndividualRound.fromJson(e as Map<String, dynamic>))
+                       .toList(),
+        fourball:   (j['fourball'] as List? ?? [])
+                       .map((e) => BestFourballRound.fromJson(e as Map<String, dynamic>))
+                       .toList(),
+      );
+}
+
 // ── Skins models ──────────────────────────────────────────────────────────────
 
 class SkinsPlayerInfo {

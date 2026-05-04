@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -43,7 +44,7 @@ class _DetailViewState extends ConsumerState<_DetailView> {
   Widget build(BuildContext context) {
     final t    = widget.tournament;
     final user = ref.watch(authProvider).user;
-    final showRegister  = t.isUpcoming && user != null && !t.isFourball && !t.isEnrolled;
+    final showRegister  = t.isUpcoming && user != null && !t.isTeamFormat && !t.isEnrolled;
     final showEnterScore = t.status == 'active' && t.isEnrolled;
 
     return Scaffold(
@@ -68,6 +69,13 @@ class _DetailViewState extends ConsumerState<_DetailView> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // Pay-at-course owed banner (only when this user owes money)
+                        if (t.amountOwed > 0)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                            child: _OwedBanner(tournament: t),
+                          ),
+
                         // Stat strip
                         Padding(
                           padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
@@ -90,8 +98,17 @@ class _DetailViewState extends ConsumerState<_DetailView> {
                                 _InfoRow(Icons.location_on_outlined, 'Course',
                                   t.courseName != null ? '${t.courseName!}\n${t.city}' : t.city),
                                 const _RowDivider(),
-                                _InfoRow(Icons.sports_golf, 'Format',
-                                  t.isFourball ? 'Four-Ball (Best Ball)' : 'Individual Stroke Play'),
+                                _InfoRow(Icons.sports_golf, 'Format', t.formatLabel),
+                                if (t.clubhouseSlug != null) ...[
+                                  const _RowDivider(),
+                                  _LinkRow(
+                                    icon: Icons.flag_outlined,
+                                    label: 'Hosted by',
+                                    value: t.clubhouseName ?? 'Clubhouse',
+                                    onTap: () =>
+                                        context.push('/clubhouses/${t.clubhouseSlug}'),
+                                  ),
+                                ],
                                 const _RowDivider(),
                                 _InfoRow(Icons.people_outlined, 'Field',
                                   '${t.playerCount} / ${t.maxPlayers} registered · ${t.spotsLeft} spots left'),
@@ -126,13 +143,19 @@ class _DetailViewState extends ConsumerState<_DetailView> {
                               const SizedBox(height: 12),
                               _PayoutCard(tournament: t),
 
-                              // Team options (fourball)
-                              if (t.isFourball && t.isUpcoming && user != null) ...[
+                              // Team options (fourball / scramble)
+                              if (t.isTeamFormat && t.isUpcoming && user != null) ...[
                                 const SizedBox(height: 24),
                                 _SectionHeader('TEAM OPTIONS'),
                                 const SizedBox(height: 12),
                                 _TeamButtons(tournament: t, joinState: widget.joinState),
                               ],
+
+                              // Players signed up
+                              const SizedBox(height: 24),
+                              _SectionHeader('PLAYERS · ${t.playerCount}'),
+                              const SizedBox(height: 12),
+                              _ParticipantsCard(tournamentId: t.id),
 
                               // Skins game (only if enabled on this tournament)
                               if (t.hasSkinsGame) ...[
@@ -142,8 +165,16 @@ class _DetailViewState extends ConsumerState<_DetailView> {
                                 _SkinsCard(tournament: t),
                               ],
 
-                              // Leaderboard
+                              // Rules
                               const SizedBox(height: 24),
+                              _OutlineButton(
+                                icon: Icons.gavel_outlined,
+                                label: 'TOURNAMENT RULES',
+                                onTap: () => _showRules(context, t),
+                              ),
+
+                              // Leaderboard
+                              const SizedBox(height: 12),
                               _OutlineButton(
                                 icon: Icons.leaderboard_outlined,
                                 label: 'VIEW LEADERBOARD',
@@ -189,6 +220,226 @@ class _DetailViewState extends ConsumerState<_DetailView> {
       ),
     );
   }
+}
+
+// ── Owed banner ──────────────────────────────────────────────────────────────
+class _OwedBanner extends StatelessWidget {
+  final TournamentModel tournament;
+  const _OwedBanner({required this.tournament});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = tournament;
+    final lines = <String>[
+      if (t.entryFeeOutstanding) 'Entry fee  \$${t.signUpFee.toStringAsFixed(0)}',
+      if (t.skinsFeeOutstanding) 'Skins fee  \$${t.skinsFee.toStringAsFixed(0)}',
+    ];
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFC9A84C).withOpacity(0.13),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFC9A84C).withOpacity(0.45)),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        const Icon(Icons.attach_money, color: Color(0xFFC9A84C), size: 28),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(
+              'Pay \$${t.amountOwed.toStringAsFixed(0)} at the course',
+              style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF8B6F23)),
+            ),
+            const SizedBox(height: 2),
+            Text(lines.join('  ·  '),
+                style: const TextStyle(
+                    fontSize: 12, color: Color(0xFF8B6F23))),
+            const SizedBox(height: 4),
+            const Text(
+              'The host will mark you as paid once they collect at check-in.',
+              style: TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFF8B6F23),
+                  height: 1.4),
+            ),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+// ── Pay-at-course confirmation dialog ────────────────────────────────────────
+Future<bool> _confirmPayAtCourse(
+  BuildContext context, {
+  required String title,
+  required double fee,
+  required String label,
+}) async {
+  if (fee <= 0) return true;
+  final result = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Text(title),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: double.infinity,
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.07),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.5,
+                        color: AppColors.textSecondary)),
+                const SizedBox(height: 4),
+                Text('\$${fee.toStringAsFixed(0)}',
+                    style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.primary)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Online payments aren\'t live yet. By tapping confirm, you\'re reserving '
+            'your spot and agreeing to pay the course at check-in. The host will '
+            'mark you as paid once they collect.',
+            style: TextStyle(fontSize: 13, height: 1.4),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.of(ctx).pop(true),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+          ),
+          child: const Text('Confirm — pay at course'),
+        ),
+      ],
+    ),
+  );
+  return result ?? false;
+}
+
+// ── Rules sheet ───────────────────────────────────────────────────────────────
+void _showRules(BuildContext context, TournamentModel t) {
+  final rulesText = (t.rules?.trim().isNotEmpty ?? false)
+      ? t.rules!
+      : _defaultRules(t);
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: AppColors.cream,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
+    builder: (_) => DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.75,
+      minChildSize: 0.4,
+      maxChildSize: 0.95,
+      builder: (_, scroll) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Center(
+            child: Container(
+              width: 40, height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.divider,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(children: [
+            const Icon(Icons.gavel_outlined, color: AppColors.primary),
+            const SizedBox(width: 10),
+            const Text('TOURNAMENT RULES',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.5)),
+          ]),
+          const SizedBox(height: 14),
+          Expanded(
+            child: SingleChildScrollView(
+              controller: scroll,
+              child: Text(
+                rulesText,
+                style: const TextStyle(
+                    fontSize: 14, height: 1.6, color: AppColors.textPrimary),
+              ),
+            ),
+          ),
+        ]),
+      ),
+    ),
+  );
+}
+
+String _defaultRules(TournamentModel t) {
+  String fmtRules;
+  if (t.isFourball) {
+    fmtRules = '''FORMAT — FOUR-BALL (BEST BALL)
+- Two-player teams. Each player plays their own ball.
+- The team's score on each hole is the lower of the two balls.
+- Net score uses each player's handicap (lower of the two strokes received on each hole).''';
+  } else if (t.isScramble) {
+    fmtRules = '''FORMAT — SCRAMBLE
+- Teams of 2–4 players. Everyone tees off on each hole.
+- The team picks the best shot, all players play their next shot from that spot. Repeat until the ball is holed.
+- One team score per hole, entered by the designated scorer.
+- Handicap allowance:
+    · 2-man scramble: 35% of low handicap + 15% of high (when handicap mode is on)
+    · 3- or 4-man scramble: gross only — handicaps do not apply.''';
+  } else {
+    fmtRules = '''FORMAT — INDIVIDUAL STROKE PLAY
+- Each player plays their own ball for 18 holes.
+- Total gross strokes are the gross score.
+- Net score = gross score − player handicap.''';
+  }
+
+  return '''$fmtRules
+
+GENERAL RULES
+- USGA Rules of Golf apply except where modified below.
+- Play the ball as it lies. No improving the lie except in marked ground-under-repair.
+- Lost ball / out-of-bounds: stroke and distance.
+- Pace of play: keep up with the group ahead.
+
+SCORING
+- Enter scores hole-by-hole in the app during or immediately after the round.
+- Scores are subject to verification by the tournament host.
+- Disputes must be raised within 48 hours of round completion.
+
+TIES
+- Ties at the top of the leaderboard share the prize for that position equally unless the host posts a playoff format.
+
+DISQUALIFICATION
+- Falsifying scores, cheating, or violating posted rules results in disqualification and forfeiture of fees.''';
 }
 
 // ── Hero ──────────────────────────────────────────────────────────────────────
@@ -515,6 +766,60 @@ class _InfoRow extends StatelessWidget {
       ]));
 }
 
+class _LinkRow extends StatelessWidget {
+  final IconData icon;
+  final String label, value;
+  final VoidCallback onTap;
+  const _LinkRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            width: 36, height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFF1B3D2C).withOpacity(0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 18, color: const Color(0xFF1B3D2C)),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(label,
+                  style: const TextStyle(
+                    fontSize: 10, fontWeight: FontWeight.w600,
+                    letterSpacing: 1, color: AppColors.textSecondary,
+                  )),
+              const SizedBox(height: 3),
+              Row(children: [
+                Flexible(
+                  child: Text(value,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                          color: AppColors.primary,
+                          height: 1.4)),
+                ),
+                const SizedBox(width: 4),
+                const Icon(Icons.open_in_new,
+                    size: 14, color: AppColors.primary),
+              ]),
+            ]),
+          ),
+        ]),
+      ),
+    );
+}
+
 class _RowDivider extends StatelessWidget {
   const _RowDivider();
 
@@ -621,11 +926,13 @@ class _TeamButtons extends StatelessWidget {
                 : () => context.push('/tournament/${tournament.id}/join-team'),
           ),
           const SizedBox(height: 10),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 4),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
             child: Text(
-              'Already have a partner? Register together. Or join a team your partner created.',
-              style: TextStyle(
+              tournament.isScramble
+                  ? 'Scramble teams take 2–4 players. Create one and your teammates can join from the tournament page.'
+                  : 'Already have a partner? Register together. Or join a team your partner created.',
+              style: const TextStyle(
                   fontSize: 11,
                   color: AppColors.textSecondary,
                   height: 1.4),
@@ -696,15 +1003,27 @@ class _RegisterButton extends ConsumerWidget {
   }
 
   Future<void> _join(BuildContext context, WidgetRef ref) async {
+    // Pay-at-course confirmation. Until Stripe is wired up, joining reserves
+    // a spot and records the player as owing the entry fee at check-in.
+    final confirmed = await _confirmPayAtCourse(
+      context,
+      title: 'Confirm registration',
+      fee: tournament.signUpFee,
+      label: 'Tournament entry',
+    );
+    if (!confirmed || !context.mounted) return;
+
     final ok =
         await ref.read(joinTournamentProvider.notifier).join(tournament.id);
     if (!context.mounted) return;
     if (ok) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Row(children: [
-          Icon(Icons.check_circle, color: Colors.white, size: 18),
-          SizedBox(width: 10),
-          Text('You\'re registered!'),
+        content: Row(children: [
+          const Icon(Icons.check_circle, color: Colors.white, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text('You\'re in — pay \$${tournament.signUpFee.toStringAsFixed(0)} at the course.'),
+          ),
         ]),
         backgroundColor: AppColors.success,
         behavior: SnackBarBehavior.floating,
@@ -712,6 +1031,7 @@ class _RegisterButton extends ConsumerWidget {
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ));
       ref.invalidate(tournamentDetailProvider(tournament.id));
+      ref.invalidate(participantsProvider(tournament.id));
       ref.invalidate(myTournamentsProvider);
       ref.invalidate(tournamentsProvider);
     } else {
@@ -962,6 +1282,14 @@ class _SkinsCard extends ConsumerWidget {
   }
 
   Future<void> _enter(BuildContext context, WidgetRef ref) async {
+    final confirmed = await _confirmPayAtCourse(
+      context,
+      title: 'Enter skins game',
+      fee: tournament.skinsFee,
+      label: 'Skins entry fee',
+    );
+    if (!confirmed || !context.mounted) return;
+
     final ok = await ref.read(enterSkinsProvider.notifier).enter(tournament.id);
     if (!context.mounted) return;
     if (ok) {
@@ -1016,4 +1344,136 @@ class _SkinsVDivider extends StatelessWidget {
   Widget build(BuildContext context) => Container(
       height: 32, width: 1, color: AppColors.divider,
       margin: const EdgeInsets.symmetric(horizontal: 8));
+}
+
+// ── Participants ──────────────────────────────────────────────────────────────
+class _ParticipantsCard extends ConsumerWidget {
+  final String tournamentId;
+  const _ParticipantsCard({required this.tournamentId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(participantsProvider(tournamentId));
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      child: async.when(
+        loading: () => const Padding(
+          padding: EdgeInsets.symmetric(vertical: 18),
+          child: Center(
+            child: SizedBox(
+              width: 22, height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2.5, color: AppColors.primary),
+            ),
+          ),
+        ),
+        error: (e, _) => Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text('Couldn\'t load players',
+              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        ),
+        data: (players) {
+          if (players.isEmpty) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text('No players signed up yet — be the first.',
+                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+            );
+          }
+          return SizedBox(
+            height: 96,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              itemCount: players.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 14),
+              itemBuilder: (_, i) => _PlayerChip(player: players[i]),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _PlayerChip extends StatelessWidget {
+  final TournamentParticipant player;
+  const _PlayerChip({required this.player});
+
+  String get _initials {
+    final parts = player.name.trim().split(RegExp(r'\s+'));
+    final letters = parts
+        .where((p) => p.isNotEmpty)
+        .take(2)
+        .map((p) => p[0].toUpperCase())
+        .join();
+    return letters.isEmpty ? '?' : letters;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final url = player.profilePictureUrl;
+    return GestureDetector(
+      onTap: () => context.push('/player/${player.id}'),
+      child: SizedBox(
+        width: 64,
+        child: Column(children: [
+          Container(
+            width: 52, height: 52,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.primary.withOpacity(0.10),
+              border: Border.all(color: AppColors.primary.withOpacity(0.25), width: 1.5),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: (url != null && url.isNotEmpty)
+                ? CachedNetworkImage(
+                    imageUrl: url,
+                    fit: BoxFit.cover,
+                    errorWidget: (_, __, ___) => _InitialsAvatar(initials: _initials),
+                    placeholder: (_, __) => Container(color: AppColors.divider.withOpacity(0.3)),
+                  )
+                : _InitialsAvatar(initials: _initials),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            player.name.split(' ').first,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          if (player.handicap != null)
+            Text(
+              'HC ${player.handicap!.toStringAsFixed(player.handicap! % 1 == 0 ? 0 : 1)}',
+              style: const TextStyle(
+                  fontSize: 9, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
+            ),
+        ]),
+      ),
+    );
+  }
+}
+
+class _InitialsAvatar extends StatelessWidget {
+  final String initials;
+  const _InitialsAvatar({required this.initials});
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Text(
+          initials,
+          style: const TextStyle(
+              color: AppColors.primary,
+              fontWeight: FontWeight.w800,
+              fontSize: 16),
+        ),
+      );
 }

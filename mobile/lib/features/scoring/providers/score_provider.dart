@@ -55,12 +55,14 @@ class HoleUpdateNotifier extends StateNotifier<AsyncValue<void>> {
     required String tournamentId,
     required int holeNumber,
     required int score,
+    String? targetUserId,
   }) async {
     state = const AsyncLoading();
     try {
       await _api.patch(ApiConstants.updateHoleScore(tournamentId), data: {
         'hole_number': holeNumber,
         'score':       score,
+        if (targetUserId != null) 'target_user_id': targetUserId,
       });
       state = const AsyncData(null);
       return true;

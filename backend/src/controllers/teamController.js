@@ -1,5 +1,11 @@
 const db = require('../config/database');
 
+// Max team size per format. Scramble allows 2–4 members; fourball is fixed at 2.
+const MAX_TEAM_SIZE = { fourball: 2, scramble: 4 };
+function isTeamFormat(format) {
+  return format === 'fourball' || format === 'scramble';
+}
+
 // POST /api/teams/create
 // body: { tournament_id, name?, partner_id? }
 // When partner_id is supplied both players are registered atomically.
@@ -25,7 +31,7 @@ async function createTeam(req, res) {
     );
     if (!tRows.length)                   throw { status: 404, message: 'Tournament not found' };
     const t = tRows[0];
-    if (t.format !== 'fourball')         throw { status: 400, message: 'Teams only available in fourball format' };
+    if (!isTeamFormat(t.format))         throw { status: 400, message: 'Teams only available in fourball / scramble' };
     if (t.status !== 'upcoming')         throw { status: 400, message: 'Tournament is not open' };
 
     // Check capacity — need room for both players when partner is provided
@@ -55,9 +61,9 @@ async function createTeam(req, res) {
         throw { status: 409, message: `${partnerUser.rows[0].name} is already entered in this tournament` };
     }
 
-    // Create team
+    // Create team — creator is designated scorer by default
     const { rows: teamRows } = await client.query(
-      `INSERT INTO teams (tournament_id, name, created_by) VALUES ($1, $2, $3) RETURNING *`,
+      `INSERT INTO teams (tournament_id, name, created_by, scorer_id) VALUES ($1, $2, $3, $3) RETURNING *`,
       [tournament_id, name || null, userId]
     );
     const team = teamRows[0];
@@ -67,7 +73,7 @@ async function createTeam(req, res) {
       `INSERT INTO team_members (team_id, user_id) VALUES ($1, $2)`, [team.id, userId]
     );
     await client.query(
-      `INSERT INTO entries (user_id, tournament_id, team_id, payment_status) VALUES ($1, $2, $3, 'paid')`,
+      `INSERT INTO entries (user_id, tournament_id, team_id, payment_status) VALUES ($1, $2, $3, 'pending')`,
       [userId, tournament_id, team.id]
     );
 
@@ -77,7 +83,7 @@ async function createTeam(req, res) {
         `INSERT INTO team_members (team_id, user_id) VALUES ($1, $2)`, [team.id, partner_id]
       );
       await client.query(
-        `INSERT INTO entries (user_id, tournament_id, team_id, payment_status) VALUES ($1, $2, $3, 'paid')`,
+        `INSERT INTO entries (user_id, tournament_id, team_id, payment_status) VALUES ($1, $2, $3, 'pending')`,
         [partner_id, tournament_id, team.id]
       );
     }
@@ -86,7 +92,7 @@ async function createTeam(req, res) {
 
     // Return team with member details
     const { rows: fullTeam } = await db.query(
-      `SELECT t.id, t.tournament_id, t.name, t.created_at,
+      `SELECT t.id, t.tournament_id, t.name, t.created_at, t.scorer_id,
               COUNT(tm.id)::int AS member_count,
               json_agg(json_build_object('id', u.id, 'name', u.name, 'handicap', u.handicap)
                 ORDER BY tm.created_at) AS members
@@ -132,9 +138,10 @@ async function joinTeam(req, res) {
     );
     if (!teamRows.length)                        throw { status: 404, message: 'Team not found' };
     const team = teamRows[0];
-    if (team.format !== 'fourball')              throw { status: 400, message: 'Teams only in fourball' };
+    if (!isTeamFormat(team.format))              throw { status: 400, message: 'Teams only in fourball / scramble' };
     if (team.tournament_status !== 'upcoming')   throw { status: 400, message: 'Tournament is not open' };
-    if (team.member_count >= 2)                  throw { status: 400, message: 'Team is already full' };
+    const cap = MAX_TEAM_SIZE[team.format] || 2;
+    if (team.member_count >= cap)                throw { status: 400, message: 'Team is already full' };
     if (team.entry_count >= team.max_players)    throw { status: 400, message: 'Tournament is full' };
 
     // Check user not already entered this tournament
@@ -177,18 +184,20 @@ async function listTeams(req, res) {
   try {
     const { rows } = await db.query(
       `SELECT
-         t.id, t.name, t.created_at,
+         t.id, t.name, t.created_at, t.scorer_id,
          COUNT(tm.id)::int AS member_count,
          json_agg(
            json_build_object('id', u.id, 'name', u.name, 'handicap', u.handicap)
            ORDER BY tm.created_at
          ) FILTER (WHERE u.id IS NOT NULL) AS members
        FROM teams t
+       JOIN tournaments tr ON tr.id = t.tournament_id
        LEFT JOIN team_members tm ON tm.team_id = t.id
        LEFT JOIN users u ON u.id = tm.user_id
        WHERE t.tournament_id = $1
-       GROUP BY t.id
-       HAVING ($2::boolean IS FALSE OR COUNT(tm.id) < 2)
+       GROUP BY t.id, tr.format
+       HAVING ($2::boolean IS FALSE
+               OR COUNT(tm.id) < (CASE tr.format WHEN 'scramble' THEN 4 ELSE 2 END))
        ORDER BY t.created_at ASC`,
       [tournament_id, open === 'true']
     );
@@ -199,4 +208,45 @@ async function listTeams(req, res) {
   }
 }
 
-module.exports = { createTeam, joinTeam, listTeams };
+// GET /api/teams/mine?tournament_id=
+// Returns the requesting user's team for the given tournament, with members + scorer
+// + each member's current hole_scores so the designated scorer can prefill.
+async function getMyTeam(req, res) {
+  const { tournament_id } = req.query;
+  const userId = req.user.id;
+  if (!tournament_id) return res.status(422).json({ error: 'tournament_id is required' });
+
+  try {
+    const { rows } = await db.query(
+      `SELECT
+         t.id, t.tournament_id, t.name, t.created_at, t.scorer_id,
+         COUNT(tm.id)::int AS member_count,
+         json_agg(
+           json_build_object(
+             'id',                  u.id,
+             'name',                u.name,
+             'handicap',            u.handicap,
+             'profile_picture_url', u.profile_picture_url,
+             'hole_scores',         e.hole_scores,
+             'gross_score',         e.gross_score
+           )
+           ORDER BY tm.created_at
+         ) FILTER (WHERE u.id IS NOT NULL) AS members
+       FROM teams t
+       JOIN team_members me ON me.team_id = t.id AND me.user_id = $1
+       LEFT JOIN team_members tm ON tm.team_id = t.id
+       LEFT JOIN users u ON u.id = tm.user_id
+       LEFT JOIN entries e ON e.user_id = u.id AND e.tournament_id = t.tournament_id
+       WHERE t.tournament_id = $2
+       GROUP BY t.id`,
+      [userId, tournament_id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'You are not on a team for this tournament' });
+    res.json({ team: rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch your team' });
+  }
+}
+
+module.exports = { createTeam, joinTeam, listTeams, getMyTeam };

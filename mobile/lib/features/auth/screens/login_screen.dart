@@ -34,11 +34,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (ok && mounted) context.go('/home');
   }
 
-  Future<void> _appleSignIn() async {
-    final ok = await ref.read(authProvider.notifier).signInWithApple();
-    if (ok && mounted) context.go('/home');
-  }
-
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
@@ -231,26 +226,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                       letterSpacing: 2,
                                     ),
                                   ),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-
-                        // Apple Sign-In
-                        SizedBox(
-                          width: double.infinity,
-                          height: 54,
-                          child: OutlinedButton.icon(
-                            onPressed: auth.loading ? null : _appleSignIn,
-                            icon: const Icon(Icons.apple, size: 22),
-                            label: const Text(
-                              'CONTINUE WITH APPLE',
-                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 1),
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: AppColors.textPrimary,
-                              side: const BorderSide(color: AppColors.divider, width: 1.5),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                            ),
                           ),
                         ),
                         const SizedBox(height: 20),

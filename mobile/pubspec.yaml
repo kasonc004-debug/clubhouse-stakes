@@ -24,9 +24,6 @@ dependencies:
   # Secure storage (JWT in Keychain / Android Keystore)
   flutter_secure_storage: ^9.0.0
 
-  # Apple Sign-In
-  sign_in_with_apple: ^5.0.0
-
   # Image picker / profile picture
   image_picker: ^1.0.4
 

@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../notifications/widgets/bell_button.dart';
 import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/widgets/loading_overlay.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/tournament_provider.dart';
 import '../models/tournament_model.dart';
-import '../../../core/widgets/clubhouse_logo.dart';
 
 // 0=UPCOMING  1=LIVE  2=MY EVENTS  3=PAST
 final _tabProvider        = StateProvider<int>((ref) => 0);
@@ -208,6 +208,45 @@ class HomeScreen extends ConsumerWidget {
     return [
       _sectionHeader('PAST TOURNAMENTS',
           onRefresh: () => ref.invalidate(pastTournamentsProvider)),
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: GestureDetector(
+            onTap: () => context.push('/best-rounds'),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                    color: const Color(0xFFC9A84C).withOpacity(0.4),
+                    width: 1.5),
+              ),
+              child: Row(children: [
+                const Icon(Icons.emoji_events_outlined,
+                    color: Color(0xFFC9A84C), size: 22),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Record Book',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14)),
+                        Text('Best individual + four-ball rounds',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: AppColors.textSecondary)),
+                      ]),
+                ),
+                const Icon(Icons.chevron_right,
+                    color: AppColors.textSecondary),
+              ]),
+            ),
+          ),
+        ),
+      ),
       const SliverToBoxAdapter(child: SizedBox(height: 14)),
       async.when(
         loading: () => _loadingSliver(),
@@ -483,6 +522,13 @@ class _HeroBanner extends StatelessWidget {
                     children: [
                       const _InlineLogo(),
                       Row(children: [
+                        const BellButton(),
+                        IconButton(
+                          tooltip: 'Clubhouses',
+                          icon: const Icon(Icons.flag_outlined,
+                              color: Colors.white70, size: 22),
+                          onPressed: () => context.push('/clubhouses'),
+                        ),
                         IconButton(
                           icon: const Icon(Icons.search_rounded,
                               color: Colors.white70, size: 22),

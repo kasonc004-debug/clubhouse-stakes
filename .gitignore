@@ -17,6 +17,8 @@ mobile/android/app/google-services.json
 mobile/ios/.symlinks/
 mobile/ios/Pods/
 mobile/ios/Flutter/flutter_export_environment.sh
+mobile/ios/Flutter/Generated.xcconfig
+mobile/ios/Flutter/ephemeral/
 mobile/ios/Runner/GeneratedPluginRegistrant.*
 mobile/ios/GoogleService-Info.plist
 

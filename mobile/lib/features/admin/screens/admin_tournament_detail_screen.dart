@@ -37,9 +37,6 @@ class _AdminTournamentDetailScreenState
     _loaded = true;
   }
 
-  double get _payoutTotal =>
-      _payoutPlaces.fold(0, (sum, p) => sum + p.pct);
-
   double get _liveHouseCutAmount {
     final total = ref
         .read(adminFinancialsProvider(widget.tournamentId))
@@ -198,19 +195,35 @@ class _AdminTournamentDetailScreenState
               const SizedBox(height: 16),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: OutlinedButton.icon(
-                  onPressed: () => context.push(
-                    '/admin/tournament/${widget.tournamentId}/scores',
-                    extra: fin.name,
+                child: Column(children: [
+                  OutlinedButton.icon(
+                    onPressed: () => context.push(
+                      '/admin/tournament/${widget.tournamentId}/payments',
+                      extra: fin.name,
+                    ),
+                    icon: const Icon(Icons.attach_money, size: 20),
+                    label: const Text('Mark Payments'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFC9A84C),
+                      side: const BorderSide(color: Color(0xFFC9A84C)),
+                      minimumSize: const Size(double.infinity, 50),
+                    ),
                   ),
-                  icon: const Icon(Icons.edit_note, size: 20),
-                  label: const Text('Edit Player Scores'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.primary,
-                    side: const BorderSide(color: AppColors.primary),
-                    minimumSize: const Size(double.infinity, 50),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: () => context.push(
+                      '/admin/tournament/${widget.tournamentId}/scores',
+                      extra: fin.name,
+                    ),
+                    icon: const Icon(Icons.edit_note, size: 20),
+                    label: const Text('Edit Player Scores'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.primary,
+                      side: const BorderSide(color: AppColors.primary),
+                      minimumSize: const Size(double.infinity, 50),
+                    ),
                   ),
-                ),
+                ]),
               ),
                 ],
               ),

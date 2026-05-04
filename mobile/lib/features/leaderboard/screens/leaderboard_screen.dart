@@ -9,9 +9,7 @@ import '../providers/leaderboard_provider.dart';
 // Skin pot color
 const _kGold = Color(0xFFC9A84C);
 
-// 10 s when active, 30 s otherwise — provider tells us the status
-const _kLiveInterval     = Duration(seconds: 10);
-const _kStandardInterval = Duration(seconds: 30);
+const _kLiveInterval = Duration(seconds: 10);
 
 class LeaderboardScreen extends ConsumerStatefulWidget {
   final String tournamentId;
@@ -168,7 +166,7 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen>
                     controller: _tabController,
                     children: [
                       _mainLeaderboardBody(async, isActive),
-                      _SkinsLeaderboard(data: skinsData!, isActive: isActive),
+                      _SkinsLeaderboard(data: skinsData, isActive: isActive),
                     ],
                   )
                 : _mainLeaderboardBody(async, isActive),
@@ -194,10 +192,16 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen>
         }
         if (data.format == 'individual') {
           return _IndividualLeaderboard(
-              entries: data.individual, isActive: isActive);
+              entries: data.individual,
+              isActive: isActive,
+              handicapEnabled: data.handicapEnabled,
+              pars: data.pars,
+              yardages: data.yardages);
         }
         return _FourballLeaderboard(
-            entries: data.fourball, isActive: isActive);
+            entries: data.fourball,
+            isActive: isActive,
+            handicapEnabled: data.handicapEnabled);
       },
     );
   }
@@ -207,8 +211,16 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen>
 class _IndividualLeaderboard extends StatelessWidget {
   final List<IndividualEntry> entries;
   final bool isActive;
-  const _IndividualLeaderboard(
-      {required this.entries, required this.isActive});
+  final bool handicapEnabled;
+  final List<int>? pars;
+  final List<int>? yardages;
+  const _IndividualLeaderboard({
+    required this.entries,
+    required this.isActive,
+    required this.handicapEnabled,
+    this.pars,
+    this.yardages,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -217,40 +229,56 @@ class _IndividualLeaderboard extends StatelessWidget {
       Container(
         color: const Color(0xFF1B3D2C),
         padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
         child: Row(children: [
           const SizedBox(
-              width: 36,
-              child: Text('#',
+              width: 40,
+              child: Text('POS',
                   style: TextStyle(
-                      color: Colors.white70, fontSize: 12))),
+                      color: Colors.white60,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.5))),
           const Expanded(
-              child: Text('Player',
+              child: Text('PLAYER',
                   style: TextStyle(
                       color: Colors.white,
-                      fontWeight: FontWeight.w600))),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.5))),
           if (isActive)
             const SizedBox(
                 width: 50,
                 child: Center(
-                    child: Text('Thru',
+                    child: Text('THRU',
                         style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12)))),
-          const SizedBox(
-              width: 48,
+                            color: Colors.white60,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.5)))),
+          SizedBox(
+              width: 52,
               child: Center(
-                  child: Text('Gross',
+                  child: Text('GROSS',
                       style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12)))),
-          const SizedBox(
-              width: 48,
-              child: Center(
-                  child: Text('Net',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700)))),
+                          color: handicapEnabled
+                              ? Colors.white60
+                              : Colors.white,
+                          fontSize: 10,
+                          fontWeight: handicapEnabled
+                              ? FontWeight.w700
+                              : FontWeight.w800,
+                          letterSpacing: 1.5)))),
+          if (handicapEnabled)
+            const SizedBox(
+                width: 52,
+                child: Center(
+                    child: Text('NET',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.5)))),
         ]),
       ),
       Expanded(
@@ -259,7 +287,11 @@ class _IndividualLeaderboard extends StatelessWidget {
           separatorBuilder: (_, __) =>
               const Divider(height: 1, color: AppColors.divider),
           itemBuilder: (context, i) => _IndividualRow(
-              entry: entries[i], isActive: isActive),
+              entry: entries[i],
+              isActive: isActive,
+              handicapEnabled: handicapEnabled,
+              pars: pars,
+              yardages: yardages),
         ),
       ),
     ]);
@@ -269,33 +301,35 @@ class _IndividualLeaderboard extends StatelessWidget {
 class _IndividualRow extends StatelessWidget {
   final IndividualEntry entry;
   final bool isActive;
-  const _IndividualRow(
-      {required this.entry, required this.isActive});
+  final bool handicapEnabled;
+  final List<int>? pars;
+  final List<int>? yardages;
+  const _IndividualRow({
+    required this.entry,
+    required this.isActive,
+    required this.handicapEnabled,
+    this.pars,
+    this.yardages,
+  });
 
   @override
   Widget build(BuildContext context) {
     final e = entry;
     final topThree = e.rank <= 3;
-    final thruLabel = e.isComplete
-        ? 'F'
-        : e.holesPlayed > 0
-            ? '${e.holesPlayed}'
-            : '—';
 
     return InkWell(
       onTap: e.holeScores.isNotEmpty
-          ? () => _showHoles(context, e)
+          ? () => _showHoles(context, e, pars, yardages)
           : null,
       child: Container(
         color: topThree
             ? AppColors.gold.withOpacity(0.05)
             : null,
         padding: const EdgeInsets.symmetric(
-            horizontal: 16, vertical: 12),
+            horizontal: 16, vertical: 14),
         child: Row(children: [
           // Rank
-          SizedBox(
-              width: 36, child: _RankBadge(rank: e.rank)),
+          SizedBox(width: 40, child: _RankBadge(rank: e.rank)),
 
           // Name + handicap
           Expanded(
@@ -303,13 +337,16 @@ class _IndividualRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(e.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w700,
                           fontSize: 14)),
-                  Text('HCP ${e.handicap.toStringAsFixed(1)}',
-                      style: const TextStyle(
-                          fontSize: 11,
-                          color: AppColors.textSecondary)),
+                  if (handicapEnabled)
+                    Text('HCP ${e.handicap.toStringAsFixed(1)}',
+                        style: const TextStyle(
+                            fontSize: 11,
+                            color: AppColors.textSecondary)),
                 ]),
           ),
 
@@ -317,80 +354,63 @@ class _IndividualRow extends StatelessWidget {
           if (isActive)
             SizedBox(
               width: 50,
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: e.isComplete
-                        ? AppColors.success.withOpacity(0.12)
-                        : e.holesPlayed > 0
-                            ? AppColors.warning.withOpacity(0.12)
-                            : AppColors.divider,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    thruLabel,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: e.isComplete
-                          ? AppColors.success
-                          : e.holesPlayed > 0
-                              ? AppColors.warning
-                              : AppColors.textSecondary,
-                    ),
-                  ),
-                ),
-              ),
+              child: Center(child: _ThruPill(
+                  isComplete: e.isComplete, holesPlayed: e.holesPlayed)),
             ),
 
           // Gross
           SizedBox(
-            width: 48,
+            width: 52,
             child: Center(
               child: Text(
                 e.grossScore > 0 ? '${e.grossScore}' : '—',
-                style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 14),
+                style: TextStyle(
+                    color: handicapEnabled
+                        ? AppColors.textSecondary
+                        : AppColors.primary,
+                    fontWeight: handicapEnabled
+                        ? FontWeight.w600
+                        : FontWeight.w800,
+                    fontSize: handicapEnabled ? 14 : 16),
               ),
             ),
           ),
 
-          // Net
-          SizedBox(
-            width: 48,
-            child: Center(
-              child: e.netScore != null
-                  ? Text(
-                      e.netScore!.toStringAsFixed(1),
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 16,
-                          color: AppColors.primary),
-                    )
-                  : Text(
-                      e.holesPlayed > 0
-                          ? '${e.grossScore}'
-                          : '—',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        color: AppColors.primary
-                            .withOpacity(0.5),
+          // Net (only when handicap enabled)
+          if (handicapEnabled)
+            SizedBox(
+              width: 52,
+              child: Center(
+                child: e.netScore != null
+                    ? Text(
+                        e.netScore!.toStringAsFixed(1),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 17,
+                            color: AppColors.primary),
+                      )
+                    : Text(
+                        e.holesPlayed > 0
+                            ? '${e.grossScore}'
+                            : '—',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                          color: AppColors.primary.withOpacity(0.45),
+                        ),
                       ),
-                    ),
+              ),
             ),
-          ),
         ]),
       ),
     );
   }
 
-  void _showHoles(BuildContext context, IndividualEntry e) {
-    const pars = [4, 4, 3, 4, 5, 3, 4, 4, 5, 4, 3, 4, 5, 4, 3, 4, 5, 4];
+  void _showHoles(BuildContext context, IndividualEntry e,
+      List<int>? parsArg, List<int>? yardagesArg) {
+    final pars = (parsArg != null && parsArg.length == 18)
+        ? parsArg
+        : const [4, 4, 3, 4, 5, 3, 4, 4, 5, 4, 3, 4, 5, 4, 3, 4, 5, 4];
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -494,42 +514,56 @@ class _IndividualRow extends StatelessWidget {
 class _FourballLeaderboard extends StatelessWidget {
   final List<FourballEntry> entries;
   final bool isActive;
-  const _FourballLeaderboard(
-      {required this.entries, required this.isActive});
+  final bool handicapEnabled;
+  const _FourballLeaderboard({
+    required this.entries,
+    required this.isActive,
+    required this.handicapEnabled,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final scoreLabel = handicapEnabled ? 'NET' : 'GROSS';
     return Column(children: [
       Container(
         color: const Color(0xFF1B3D2C),
         padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
         child: Row(children: [
           const SizedBox(
-              width: 36,
-              child: Text('#',
+              width: 40,
+              child: Text('POS',
                   style: TextStyle(
-                      color: Colors.white70, fontSize: 12))),
+                      color: Colors.white60,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.5))),
           const Expanded(
-              child: Text('Team',
+              child: Text('TEAM',
                   style: TextStyle(
                       color: Colors.white,
-                      fontWeight: FontWeight.w600))),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.5))),
           if (isActive)
             const SizedBox(
                 width: 50,
                 child: Center(
-                    child: Text('Thru',
+                    child: Text('THRU',
                         style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12)))),
-          const SizedBox(
-              width: 64,
+                            color: Colors.white60,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.5)))),
+          SizedBox(
+              width: 68,
               child: Center(
-                  child: Text('Net',
-                      style: TextStyle(
+                  child: Text(scoreLabel,
+                      style: const TextStyle(
                           color: Colors.white,
-                          fontWeight: FontWeight.w700)))),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.5)))),
         ]),
       ),
       Expanded(
@@ -537,8 +571,10 @@ class _FourballLeaderboard extends StatelessWidget {
           itemCount: entries.length,
           separatorBuilder: (_, __) =>
               const Divider(height: 1, color: AppColors.divider),
-          itemBuilder: (context, i) =>
-              _FourballRow(entry: entries[i], isActive: isActive),
+          itemBuilder: (context, i) => _FourballRow(
+              entry: entries[i],
+              isActive: isActive,
+              handicapEnabled: handicapEnabled),
         ),
       ),
     ]);
@@ -548,38 +584,42 @@ class _FourballLeaderboard extends StatelessWidget {
 class _FourballRow extends StatelessWidget {
   final FourballEntry entry;
   final bool isActive;
-  const _FourballRow(
-      {required this.entry, required this.isActive});
+  final bool handicapEnabled;
+  const _FourballRow({
+    required this.entry,
+    required this.isActive,
+    required this.handicapEnabled,
+  });
 
   @override
   Widget build(BuildContext context) {
     final e = entry;
-    final thruLabel = e.holesPlayed == 18
-        ? 'F'
-        : e.holesPlayed > 0
-            ? '${e.holesPlayed}'
-            : '—';
     return InkWell(
       onTap: () => _showDetail(context, e),
       child: Container(
         color: e.rank <= 3 ? AppColors.gold.withOpacity(0.05) : null,
         padding: const EdgeInsets.symmetric(
-            horizontal: 16, vertical: 12),
+            horizontal: 16, vertical: 14),
         child: Row(children: [
-          SizedBox(width: 36, child: _RankBadge(rank: e.rank)),
+          SizedBox(width: 40, child: _RankBadge(rank: e.rank)),
           Expanded(
             child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(e.teamName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w700,
                           fontSize: 14)),
                   Text(
                     e.players
-                        .map((p) =>
-                            '${p.name} (${p.handicap.toStringAsFixed(1)})')
+                        .map((p) => handicapEnabled
+                            ? '${p.name} (${p.handicap.toStringAsFixed(1)})'
+                            : p.name)
                         .join(' · '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                         fontSize: 11,
                         color: AppColors.textSecondary),
@@ -590,37 +630,19 @@ class _FourballRow extends StatelessWidget {
             SizedBox(
               width: 50,
               child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: e.holesPlayed == 18
-                        ? AppColors.success.withOpacity(0.12)
-                        : e.holesPlayed > 0
-                            ? AppColors.warning.withOpacity(0.12)
-                            : AppColors.divider,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(thruLabel,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: e.holesPlayed == 18
-                              ? AppColors.success
-                              : e.holesPlayed > 0
-                                  ? AppColors.warning
-                                  : AppColors.textSecondary)),
-                ),
-              ),
+                  child: _ThruPill(
+                      isComplete: e.holesPlayed == 18,
+                      holesPlayed: e.holesPlayed)),
             ),
           SizedBox(
-            width: 64,
+            width: 68,
             child: Center(
               child: Text(
-                e.netTotal.toStringAsFixed(1),
+                handicapEnabled
+                    ? e.netTotal.toStringAsFixed(1)
+                    : e.netTotal.toStringAsFixed(0),
                 style: const TextStyle(
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w900,
                     fontSize: 18,
                     color: AppColors.primary),
               ),
@@ -669,6 +691,74 @@ class _FourballRow extends StatelessWidget {
                       fontWeight: FontWeight.w600),
                 ),
                 const Divider(height: 24),
+                // For formats where individual player scores aren't stored
+                // (e.g. scramble), show the team scorecard from bestBallPerHole.
+                if (e.players.every((p) => p.holeScores.isEmpty) &&
+                    e.bestBallPerHole.isNotEmpty) ...[
+                  const Text('TEAM SCORECARD',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.5,
+                          color: AppColors.textSecondary)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
+                    children: List.generate(18, (i) {
+                      final raw = i < e.bestBallPerHole.length
+                          ? e.bestBallPerHole[i].round()
+                          : 0;
+                      return Container(
+                        width: 32, height: 36,
+                        decoration: BoxDecoration(
+                          color: raw > 0
+                              ? AppColors.background
+                              : AppColors.divider.withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: AppColors.divider),
+                        ),
+                        child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text('${i + 1}',
+                                  style: const TextStyle(
+                                      fontSize: 8,
+                                      color: AppColors.textSecondary)),
+                              Text(raw > 0 ? '$raw' : '·',
+                                  style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800)),
+                            ]),
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('TEAM',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.5,
+                          color: AppColors.textSecondary)),
+                  const SizedBox(height: 6),
+                  for (final p in e.players)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(children: [
+                        const Icon(Icons.person,
+                            size: 14, color: AppColors.primary),
+                        const SizedBox(width: 6),
+                        Text(p.name,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w600)),
+                        const Spacer(),
+                        Text('HCP ${p.handicap.toStringAsFixed(1)}',
+                            style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary)),
+                      ]),
+                    ),
+                ] else
                 ...e.players.map((p) => Padding(
                       padding: const EdgeInsets.only(bottom: 16),
                       child: Column(
@@ -1058,23 +1148,68 @@ class _RankBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = {
-      1: (AppColors.gold, Colors.white),
-      2: (const Color(0xFFC0C0C0), Colors.white),
-      3: (const Color(0xFFCD7F32), Colors.white),
-    };
-    final (bg, fg) = colors[rank] ??
-        (AppColors.background, AppColors.textPrimary);
+    final medal = {
+      1: AppColors.gold,
+      2: const Color(0xFFC0C0C0),
+      3: const Color(0xFFCD7F32),
+    }[rank];
+    if (medal != null) {
+      return Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(color: medal, shape: BoxShape.circle),
+        child: Center(
+            child: Text(rank.toString(),
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 14))),
+      );
+    }
+    // Ranks 4+ — flat numeric chip, no fill, easier on the eye
+    return Center(
+      child: Text('$rank',
+          style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w800,
+              fontSize: 14)),
+    );
+  }
+}
+
+class _ThruPill extends StatelessWidget {
+  final bool isComplete;
+  final int holesPlayed;
+  const _ThruPill({required this.isComplete, required this.holesPlayed});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = isComplete
+        ? 'F'
+        : holesPlayed > 0
+            ? '$holesPlayed'
+            : '—';
+    final fg = isComplete
+        ? AppColors.success
+        : holesPlayed > 0
+            ? AppColors.warning
+            : AppColors.textSecondary;
+    final bg = isComplete
+        ? AppColors.success.withOpacity(0.13)
+        : holesPlayed > 0
+            ? AppColors.warning.withOpacity(0.13)
+            : AppColors.divider.withOpacity(0.5);
     return Container(
-      width: 30,
-      height: 30,
-      decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
-      child: Center(
-          child: Text(rank.toString(),
-              style: TextStyle(
-                  color: fg,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 13))),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(label,
+          style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: fg)),
     );
   }
 }

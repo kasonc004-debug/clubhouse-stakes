@@ -48,6 +48,8 @@ async function getTournament(req, res) {
     const { rows } = await db.query(
       `SELECT
          t.*,
+         ch.slug AS clubhouse_slug,
+         ch.name AS clubhouse_name,
          COUNT(DISTINCT e.user_id)::int AS player_count,
          CASE
            WHEN t.fee_per = 'team' THEN
@@ -59,11 +61,14 @@ async function getTournament(req, res) {
          COUNT(DISTINCT CASE WHEN e.skins_entry = TRUE THEN e.user_id END)::int AS skins_count,
          COUNT(DISTINCT CASE WHEN e.skins_entry = TRUE THEN e.user_id END)::int * t.skins_fee AS skins_pot,
          (SELECT skins_entry FROM entries WHERE user_id = $2 AND tournament_id = t.id LIMIT 1) AS my_skins_entry,
-         (SELECT id FROM entries WHERE user_id = $2 AND tournament_id = t.id LIMIT 1) AS my_entry_id
+         (SELECT id FROM entries WHERE user_id = $2 AND tournament_id = t.id LIMIT 1) AS my_entry_id,
+         (SELECT payment_status FROM entries WHERE user_id = $2 AND tournament_id = t.id LIMIT 1) AS my_payment_status,
+         (SELECT skins_payment_status FROM entries WHERE user_id = $2 AND tournament_id = t.id LIMIT 1) AS my_skins_payment_status
        FROM tournaments t
+       LEFT JOIN clubhouses ch ON ch.id = t.clubhouse_id
        LEFT JOIN entries e ON e.tournament_id = t.id
        WHERE t.id = $1
-       GROUP BY t.id`,
+       GROUP BY t.id, ch.slug, ch.name`,
       [id, userId]
     );
     if (!rows.length) return res.status(404).json({ error: 'Tournament not found' });
@@ -125,6 +130,8 @@ async function joinTournament(req, res) {
     const tournament = tRows[0];
     if (tournament.status !== 'upcoming')
       return res.status(400).json({ error: 'Tournament is no longer open for registration' });
+    if (tournament.format === 'fourball' || tournament.format === 'scramble')
+      return res.status(400).json({ error: 'This tournament is team-based — register through the team flow.' });
     if (tournament.entry_count >= tournament.max_players)
       return res.status(400).json({ error: 'Tournament is full' });
 
@@ -135,9 +142,11 @@ async function joinTournament(req, res) {
     );
     if (dup.rows.length) return res.status(409).json({ error: 'Already entered this tournament' });
 
+    // Pay-at-course: entry is reserved now, money is collected in person.
+    // Admin flips payment_status to 'paid' once they receive it.
     const { rows } = await db.query(
       `INSERT INTO entries (user_id, tournament_id, payment_status)
-       VALUES ($1, $2, 'paid')
+       VALUES ($1, $2, 'pending')
        RETURNING *`,
       [userId, id]
     );
@@ -153,9 +162,9 @@ async function getParticipants(req, res) {
   const { id } = req.params;
   try {
     const { rows } = await db.query(
-      `SELECT u.id, u.name, u.handicap, u.city,
+      `SELECT u.id, u.name, u.handicap, u.city, u.profile_picture_url,
               e.id AS entry_id, e.gross_score, e.net_score,
-              e.payment_status, e.team_id
+              e.payment_status, e.skins_entry, e.skins_payment_status, e.team_id
        FROM entries e
        JOIN users u ON u.id = e.user_id
        WHERE e.tournament_id = $1
@@ -176,8 +185,10 @@ async function getMyTournaments(req, res) {
     const { rows } = await db.query(
       `SELECT
          t.*,
-         e.id             AS my_entry_id,
-         e.payment_status AS my_payment_status,
+         e.id                   AS my_entry_id,
+         e.payment_status       AS my_payment_status,
+         e.skins_entry          AS my_skins_entry,
+         e.skins_payment_status AS my_skins_payment_status,
          COUNT(DISTINCT e2.user_id)::int AS player_count,
          CASE
            WHEN t.fee_per = 'team' THEN
@@ -191,7 +202,7 @@ async function getMyTournaments(req, res) {
        LEFT JOIN (SELECT DISTINCT team_id FROM entries WHERE team_id IS NOT NULL) tm_grp
          ON tm_grp.team_id IN (SELECT id FROM teams WHERE tournament_id = t.id)
        WHERE e.user_id = $1
-       GROUP BY t.id, e.id, e.payment_status
+       GROUP BY t.id, e.id, e.payment_status, e.skins_entry, e.skins_payment_status
        ORDER BY t.date ASC`,
       [userId]
     );

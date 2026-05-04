@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -30,14 +31,33 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
   Future<void> _signup() async {
     if (!_formKey.currentState!.validate()) return;
-    final ok = await ref.read(authProvider.notifier).signup(
+    final notifier = ref.read(authProvider.notifier);
+    final ok = await notifier.signup(
       name:     _nameCtrl.text.trim(),
       email:    _emailCtrl.text.trim(),
       password: _passCtrl.text,
       handicap: _handicap,
       city:     _cityCtrl.text.trim().isEmpty ? null : _cityCtrl.text.trim(),
     );
-    if (ok && mounted) context.go('/home');
+    if (!ok || !mounted) return;
+
+    // If their email matched a pending clubhouse invite, surface it.
+    final attached = notifier.consumeAttachedClubhouses();
+    if (attached.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(attached.length == 1
+            ? 'You\'ve been added to a clubhouse you were invited to!'
+            : 'You\'ve been added to ${attached.length} clubhouses.'),
+        backgroundColor: AppColors.success,
+        behavior: SnackBarBehavior.floating,
+        action: SnackBarAction(
+          label: 'View',
+          textColor: Colors.white,
+          onPressed: () => context.push('/clubhouses/${attached.first}'),
+        ),
+      ));
+    }
+    context.go('/home');
   }
 
   @override
@@ -151,10 +171,36 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                     ),
                   ]),
                   const SizedBox(height: 24),
-                  const Text(
-                    'By creating an account, you agree to our Terms of Service and Privacy Policy.',
+                  Text.rich(
+                    TextSpan(
+                      style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                      children: [
+                        const TextSpan(text: 'By creating an account, you agree to our '),
+                        TextSpan(
+                          text: 'Terms of Service',
+                          style: const TextStyle(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.underline,
+                          ),
+                          recognizer: TapGestureRecognizer()
+                            ..onTap = () => context.push('/terms'),
+                        ),
+                        const TextSpan(text: ' and '),
+                        TextSpan(
+                          text: 'Privacy Policy',
+                          style: const TextStyle(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.underline,
+                          ),
+                          recognizer: TapGestureRecognizer()
+                            ..onTap = () => context.push('/privacy'),
+                        ),
+                        const TextSpan(text: '.'),
+                      ],
+                    ),
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
                   ),
                 ]),
               ),

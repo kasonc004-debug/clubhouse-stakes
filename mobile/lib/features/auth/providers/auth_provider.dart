@@ -1,6 +1,5 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/storage/secure_storage.dart';
@@ -11,16 +10,31 @@ class AuthState {
   final UserModel? user;
   final bool loading;
   final String? error;
+  /// Clubhouse slugs that were auto-attached during the most recent signup,
+  /// so the UI can surface a "you've joined X" toast. Cleared after read.
+  final List<String> attachedClubhouses;
 
-  const AuthState({this.user, this.loading = false, this.error});
+  const AuthState({
+    this.user,
+    this.loading = false,
+    this.error,
+    this.attachedClubhouses = const [],
+  });
 
   bool get isAuthenticated => user != null;
 
-  AuthState copyWith({UserModel? user, bool? loading, String? error, bool clearUser = false}) =>
+  AuthState copyWith({
+    UserModel? user,
+    bool? loading,
+    String? error,
+    List<String>? attachedClubhouses,
+    bool clearUser = false,
+  }) =>
       AuthState(
-        user:    clearUser ? null : (user ?? this.user),
-        loading: loading ?? this.loading,
-        error:   error,
+        user:               clearUser ? null : (user ?? this.user),
+        loading:            loading ?? this.loading,
+        error:              error,
+        attachedClubhouses: attachedClubhouses ?? this.attachedClubhouses,
       );
 }
 
@@ -65,7 +79,19 @@ class AuthNotifier extends StateNotifier<AuthState> {
         'name': name, 'email': email, 'password': password,
         'handicap': handicap, 'city': city,
       });
+      // The backend tags new users with any clubhouses they were
+      // auto-added to via pending email invites.
+      final attached = <String>[];
+      final raw = resp.data['user']?['attached_clubhouses'];
+      if (raw is List) {
+        for (final v in raw) {
+          if (v is String && v.isNotEmpty) attached.add(v);
+        }
+      }
       await _persist(resp.data);
+      if (attached.isNotEmpty) {
+        state = state.copyWith(attachedClubhouses: attached);
+      }
       return true;
     } on DioException catch (e) {
       state = state.copyWith(loading: false, error: ApiException.fromDio(e).message);
@@ -74,6 +100,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
       state = state.copyWith(loading: false, error: 'Signup failed. Please try again.');
       return false;
     }
+  }
+
+  /// One-shot consumer: returns the slugs and clears the list.
+  List<String> consumeAttachedClubhouses() {
+    final list = state.attachedClubhouses;
+    if (list.isEmpty) return const [];
+    state = state.copyWith(attachedClubhouses: const []);
+    return list;
   }
 
   Future<bool> login({required String email, required String password}) async {
@@ -93,37 +127,19 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  Future<bool> signInWithApple() async {
-    state = state.copyWith(loading: true, error: null);
-    try {
-      final credential = await SignInWithApple.getAppleIDCredential(
-        scopes: [AppleIDAuthorizationScopes.email, AppleIDAuthorizationScopes.fullName],
-      );
-      final resp = await _api.post(ApiConstants.apple, data: {
-        'appleId': credential.userIdentifier,
-        'email':   credential.email,
-        'name':    [credential.givenName, credential.familyName]
-                       .where((s) => s != null && s.isNotEmpty)
-                       .join(' '),
-      });
-      await _persist(resp.data);
-      return true;
-    } on DioException catch (e) {
-      state = state.copyWith(loading: false, error: ApiException.fromDio(e).message);
-      return false;
-    } catch (e) {
-      state = state.copyWith(loading: false, error: 'Apple Sign-In cancelled');
-      return false;
-    }
-  }
-
-  Future<bool> updateProfile({String? name, double? handicap, String? city}) async {
+  Future<bool> updateProfile({
+    String? name,
+    double? handicap,
+    String? city,
+    String? profilePictureUrl,
+  }) async {
     state = state.copyWith(loading: true, error: null);
     try {
       final data = <String, dynamic>{};
-      if (name     != null) data['name']     = name;
-      if (handicap != null) data['handicap'] = handicap;
-      if (city     != null) data['city']     = city;
+      if (name              != null) data['name']                 = name;
+      if (handicap          != null) data['handicap']             = handicap;
+      if (city              != null) data['city']                 = city;
+      if (profilePictureUrl != null) data['profile_picture_url']  = profilePictureUrl;
 
       final resp  = await _api.patch(ApiConstants.me, data: data);
       final fresh = UserModel.fromJson(resp.data['user'] as Map<String, dynamic>);
