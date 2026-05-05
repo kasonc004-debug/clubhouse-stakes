@@ -33,15 +33,21 @@ class ClubhouseLogo extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            'CLUBHOUSE',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: primaryColor,
-              fontSize: clubhouseSize,
-              fontWeight: FontWeight.w900,
-              letterSpacing: clubhouseSize * 0.18,
-              height: 1.0,
+          // FittedBox auto-shrinks each line to fit the available width so
+          // letter-spacing never pushes the wordmark onto two lines.
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              'CLUBHOUSE',
+              maxLines: 1,
+              softWrap: false,
+              style: TextStyle(
+                color: primaryColor,
+                fontSize: clubhouseSize,
+                fontWeight: FontWeight.w900,
+                letterSpacing: clubhouseSize * 0.14,
+                height: 1.0,
+              ),
             ),
           ),
           Padding(
@@ -52,26 +58,35 @@ class ClubhouseLogo extends StatelessWidget {
               color: accentColor,
             ),
           ),
-          Text(
-            'STAKES',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: accentColor,
-              fontSize: stakesSize,
-              fontWeight: FontWeight.w900,
-              letterSpacing: stakesSize * 0.34,
-              height: 1.0,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              'STAKES',
+              maxLines: 1,
+              softWrap: false,
+              style: TextStyle(
+                color: accentColor,
+                fontSize: stakesSize,
+                fontWeight: FontWeight.w900,
+                letterSpacing: stakesSize * 0.28,
+                height: 1.0,
+              ),
             ),
           ),
           if (showTagline) ...[
             SizedBox(height: width * 0.026),
-            Text(
-              'PRIZE POOL GOLF',
-              style: TextStyle(
-                color: primaryColor.withOpacity(0.55),
-                fontSize: taglineSize,
-                fontWeight: FontWeight.w600,
-                letterSpacing: taglineSize * 0.5,
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                'PRIZE POOL GOLF',
+                maxLines: 1,
+                softWrap: false,
+                style: TextStyle(
+                  color: primaryColor.withOpacity(0.55),
+                  fontSize: taglineSize,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: taglineSize * 0.5,
+                ),
               ),
             ),
           ],
