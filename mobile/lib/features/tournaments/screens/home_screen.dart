@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../clubhouses/providers/clubhouse_provider.dart';
 import '../../notifications/widgets/bell_button.dart';
 import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
@@ -40,6 +41,9 @@ class HomeScreen extends ConsumerWidget {
                   : null,
             ),
           ),
+
+          // My Clubhouse quick-access card (only renders if user has any).
+          const SliverToBoxAdapter(child: _MyClubhouseCard()),
 
           SliverToBoxAdapter(
             child: Padding(
@@ -614,6 +618,110 @@ class _HeroBanner extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── My Clubhouse quick-access card ───────────────────────────────────────────
+class _MyClubhouseCard extends ConsumerWidget {
+  const _MyClubhouseCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(myClubhousesProvider);
+    return async.when(
+      loading: () => const SizedBox.shrink(),
+      error:   (_, __) => const SizedBox.shrink(),
+      data: (list) {
+        if (list.isEmpty) return const SizedBox.shrink();
+
+        // 1 clubhouse → tap goes straight to it. 2+ → goes to the list.
+        final single = list.length == 1 ? list.first : null;
+        final subtitle = single != null
+            ? (single.locationLabel.isEmpty
+                ? (single.myRole == 'staff' ? 'You\'re staff' : 'You\'re the owner')
+                : single.locationLabel)
+            : '${list.length} clubhouses you manage';
+        final title = single != null ? single.name : 'My Clubhouses';
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+          child: GestureDetector(
+            onTap: () {
+              if (single != null) {
+                context.push('/clubhouses/${single.slug}');
+              } else {
+                context.push('/clubhouses/mine');
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF1B3D2C), Color(0xFF2A5940)],
+                ),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                    color: const Color(0xFFC9A84C).withOpacity(0.55),
+                    width: 1.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.10),
+                    blurRadius: 14,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(children: [
+                Container(
+                  width: 44, height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFC9A84C).withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: const Color(0xFFC9A84C).withOpacity(0.5)),
+                  ),
+                  child: const Icon(Icons.flag,
+                      color: Color(0xFFC9A84C), size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('MY CLUBHOUSE',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.5,
+                            color: Color(0xFFC9A84C),
+                          )),
+                      const SizedBox(height: 2),
+                      Text(title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800)),
+                      Text(subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 12)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 6),
+                const Icon(Icons.chevron_right,
+                    color: Colors.white70, size: 20),
+              ]),
+            ),
+          ),
+        );
+      },
     );
   }
 }
