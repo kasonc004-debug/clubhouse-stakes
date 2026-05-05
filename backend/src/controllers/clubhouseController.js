@@ -182,6 +182,16 @@ async function createClubhouse(req, res) {
   const data = req.body || {};
   if (!data.name || !data.name.trim()) return res.status(422).json({ error: 'Name required' });
 
+  // Owner: admin can assign someone else; otherwise it's the creator.
+  let ownerId = req.user.id;
+  if (data.owner_id && data.owner_id !== req.user.id) {
+    const { rows: u } = await db.query(
+      'SELECT id FROM users WHERE id = $1', [data.owner_id]
+    );
+    if (!u.length) return res.status(404).json({ error: 'Owner user not found' });
+    ownerId = data.owner_id;
+  }
+
   // Public courses default to is_public = TRUE.
   const isPublic = data.is_public ?? (data.is_public_course === true);
 
@@ -197,13 +207,27 @@ async function createClubhouse(req, res) {
                $13, $14, $15)
        RETURNING *`,
       [
-        req.user.id, slug, data.name.trim(),
+        ownerId, slug, data.name.trim(),
         data.course_name || null, data.city || null, data.state || null, data.country || null,
         data.about || null, data.logo_url || null, data.banner_url || null,
         data.primary_color || null, data.accent_color || null,
         isPublic, data.is_public_course === true, data.course_api_id || null,
       ]
     );
+
+    // If the assigned owner isn't the creator, send them a notification so
+    // they know they have a new clubhouse to manage.
+    if (ownerId !== req.user.id) {
+      await notify({
+        userIds: [ownerId],
+        type:    'clubhouse_owner',
+        title:   `You're the owner of ${rows[0].name}`,
+        body:    'A clubhouse was set up with you as the owner. Tap to manage it.',
+        link:    `/clubhouses/${rows[0].slug}`,
+        payload: { clubhouse_id: rows[0].id, clubhouse_slug: rows[0].slug },
+      });
+    }
+
     res.status(201).json({ clubhouse: rows[0] });
   } catch (err) {
     console.error(err);
@@ -219,6 +243,26 @@ async function updateClubhouse(req, res) {
       return res.status(403).json({ error: 'You don\'t have permission to edit this clubhouse' });
     }
 
+    // Ownership transfer: only the current owner or a system admin may
+    // change owner_id. Staff can edit everything else but not the owner.
+    const transferringOwner = req.body.owner_id !== undefined;
+    if (transferringOwner) {
+      const { rows: owner } = await db.query(
+        'SELECT owner_id FROM clubhouses WHERE id = $1', [id]
+      );
+      const isCurrentOwner =
+          owner.length && owner[0].owner_id === req.user.id;
+      if (!isCurrentOwner && !req.user.is_admin) {
+        return res.status(403).json({
+          error: 'Only the current owner or a system admin can transfer ownership.',
+        });
+      }
+      const { rows: u } = await db.query(
+        'SELECT id FROM users WHERE id = $1', [req.body.owner_id]
+      );
+      if (!u.length) return res.status(404).json({ error: 'New owner not found' });
+    }
+
     const updates = [];
     const values = [];
     let i = 1;
@@ -228,6 +272,10 @@ async function updateClubhouse(req, res) {
         values.push(req.body[f]);
       }
     }
+    if (transferringOwner) {
+      updates.push(`owner_id = $${i++}`);
+      values.push(req.body.owner_id);
+    }
     if (!updates.length) return res.status(422).json({ error: 'No fields to update' });
     values.push(id);
 
@@ -235,6 +283,18 @@ async function updateClubhouse(req, res) {
       `UPDATE clubhouses SET ${updates.join(', ')} WHERE id = $${i} RETURNING *`,
       values
     );
+
+    if (transferringOwner && req.body.owner_id !== req.user.id) {
+      await notify({
+        userIds: [req.body.owner_id],
+        type:    'clubhouse_owner',
+        title:   `You're the owner of ${rows[0].name}`,
+        body:    'Ownership of this clubhouse was transferred to you.',
+        link:    `/clubhouses/${rows[0].slug}`,
+        payload: { clubhouse_id: rows[0].id, clubhouse_slug: rows[0].slug },
+      });
+    }
+
     res.json({ clubhouse: rows[0] });
   } catch (err) {
     console.error(err);

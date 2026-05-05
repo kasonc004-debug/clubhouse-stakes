@@ -2,9 +2,12 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'dart:async';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/network/image_uploader.dart';
 import '../../../core/widgets/cs_button.dart';
+import '../../auth/providers/auth_provider.dart';
+import '../../players/providers/player_provider.dart';
 import '../models/clubhouse_model.dart';
 import '../providers/clubhouse_provider.dart';
 
@@ -36,8 +39,17 @@ class _ClubhouseEditScreenState extends ConsumerState<ClubhouseEditScreen> {
   bool _uploadingLogo   = false;
   bool _uploadingBanner = false;
 
+  // Owner picker — admin-only on create, owner/admin on edit (for transfers).
+  PlayerProfile? _selectedOwner;        // null → keep current / default to me
+  String?        _ownerSearchQuery;
+  Timer?         _ownerDebounce;
+  final _ownerSearchCtrl = TextEditingController();
+  bool _ownerPickerOpen = false;
+
   @override
   void dispose() {
+    _ownerDebounce?.cancel();
+    _ownerSearchCtrl.dispose();
     for (final c in [_name, _course, _city, _state, _country, _about, _logo, _banner]) {
       c.dispose();
     }
@@ -74,6 +86,114 @@ class _ClubhouseEditScreenState extends ConsumerState<ClubhouseEditScreen> {
     });
   }
 
+  Widget _ownerSection() {
+    final isCreate = widget.existing == null;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('OWNER',
+          style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.5,
+              color: AppColors.textSecondary)),
+      const SizedBox(height: 8),
+      Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.divider),
+        ),
+        padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (_selectedOwner != null)
+            _PickedOwnerCard(
+              player: _selectedOwner!,
+              onClear: () => setState(() {
+                _selectedOwner = null;
+                _ownerSearchCtrl.clear();
+                _ownerSearchQuery = null;
+                _ownerPickerOpen = false;
+              }),
+            )
+          else
+            Row(children: [
+              const Icon(Icons.person_outline, color: AppColors.textSecondary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  isCreate
+                      ? (widget.existing == null
+                          ? 'You\'ll be the owner unless you pick someone below.'
+                          : '')
+                      : 'Current owner: ${widget.existing!.ownerName ?? 'unknown'}',
+                  style: const TextStyle(
+                      fontSize: 12, color: AppColors.textSecondary),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () =>
+                    setState(() => _ownerPickerOpen = !_ownerPickerOpen),
+                icon: Icon(
+                    _ownerPickerOpen
+                        ? Icons.keyboard_arrow_up
+                        : Icons.search,
+                    size: 16),
+                label: Text(_ownerPickerOpen ? 'Close' : 'Pick'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  textStyle: const TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ]),
+          if (_ownerPickerOpen && _selectedOwner == null) ...[
+            const SizedBox(height: 8),
+            TextField(
+              controller: _ownerSearchCtrl,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: 'Search by name…',
+                prefixIcon: Icon(Icons.search),
+                isDense: true,
+              ),
+              onChanged: (v) {
+                _ownerDebounce?.cancel();
+                _ownerDebounce =
+                    Timer(const Duration(milliseconds: 300), () {
+                  if (mounted) {
+                    setState(() => _ownerSearchQuery =
+                        v.trim().length >= 2 ? v.trim() : null);
+                  }
+                });
+              },
+            ),
+            if (_ownerSearchQuery != null) ...[
+              const SizedBox(height: 8),
+              _OwnerSearchResults(
+                query: _ownerSearchQuery!,
+                onPick: (p) => setState(() {
+                  _selectedOwner = p;
+                  _ownerPickerOpen = false;
+                }),
+              ),
+            ],
+          ],
+          if (!isCreate && _selectedOwner != null) ...[
+            const SizedBox(height: 10),
+            const Text(
+              'Saving will transfer ownership of this clubhouse. The new owner '
+              'gets full edit + ownership rights; you keep access only if you\'re '
+              'a system admin or staff.',
+              style: TextStyle(
+                  fontSize: 11,
+                  height: 1.4,
+                  color: AppColors.textSecondary),
+            ),
+          ],
+        ]),
+      ),
+    ]);
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     final data = {
@@ -89,6 +209,7 @@ class _ClubhouseEditScreenState extends ConsumerState<ClubhouseEditScreen> {
       'accent_color':  _accent,
       'is_public':         _isPublic,
       'is_public_course':  _isPublicCourse,
+      if (_selectedOwner != null) 'owner_id': _selectedOwner!.id,
     };
 
     final notifier = ref.read(clubhouseEditProvider.notifier);
@@ -121,6 +242,15 @@ class _ClubhouseEditScreenState extends ConsumerState<ClubhouseEditScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(clubhouseEditProvider);
     final loading = state.isLoading;
+    final me = ref.watch(authProvider).user;
+    // Show the owner picker when:
+    //  - creating (admin assigning to a course pro / external owner), OR
+    //  - editing AND the current user is the owner OR a system admin (transfer flow)
+    final isAdmin = me?.isAdmin == true;
+    final isOwnerOnEdit =
+        widget.existing != null && me != null && me.id == widget.existing!.ownerId;
+    final showOwnerPicker = (widget.existing == null && isAdmin) ||
+        (widget.existing != null && (isAdmin || isOwnerOnEdit));
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -162,6 +292,10 @@ class _ClubhouseEditScreenState extends ConsumerState<ClubhouseEditScreen> {
             TextFormField(controller: _country,
               decoration: const InputDecoration(labelText: 'Country')),
             const SizedBox(height: 18),
+
+            // Owner picker (admin / current owner only)
+            if (showOwnerPicker) _ownerSection(),
+            if (showOwnerPicker) const SizedBox(height: 18),
 
             // Public course → public clubhouse default
             _ToggleCard(
@@ -342,6 +476,112 @@ class _ColorRow extends StatelessWidget {
             ),
         ]),
       ]),
+    );
+  }
+}
+
+class _PickedOwnerCard extends StatelessWidget {
+  final PlayerProfile player;
+  final VoidCallback onClear;
+  const _PickedOwnerCard({required this.player, required this.onClear});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
+        decoration: BoxDecoration(
+          color: AppColors.primary.withOpacity(0.07),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+        ),
+        child: Row(children: [
+          const Icon(Icons.person, color: AppColors.primary, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(player.name,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 14)),
+                  Text(
+                    'HCP ${player.handicap.toStringAsFixed(1)}'
+                    '${player.city != null ? ' · ${player.city}' : ''}',
+                    style: const TextStyle(
+                        fontSize: 11, color: AppColors.textSecondary),
+                  ),
+                ]),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 18),
+            onPressed: onClear,
+            tooltip: 'Clear',
+          ),
+        ]),
+      );
+}
+
+class _OwnerSearchResults extends ConsumerWidget {
+  final String query;
+  final void Function(PlayerProfile) onPick;
+  const _OwnerSearchResults({required this.query, required this.onPick});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(playerSearchProvider(query));
+    return async.when(
+      loading: () => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Row(children: [
+          SizedBox(
+              width: 14, height: 14,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: AppColors.primary)),
+          SizedBox(width: 10),
+          Text('Searching…',
+              style: TextStyle(
+                  fontSize: 12, color: AppColors.textSecondary)),
+        ]),
+      ),
+      error: (e, _) => Text('Search failed: $e',
+          style: const TextStyle(fontSize: 12, color: AppColors.error)),
+      data: (players) {
+        if (players.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text('No players found.',
+                style: TextStyle(
+                    fontSize: 12, color: AppColors.textSecondary)),
+          );
+        }
+        return Container(
+          decoration: BoxDecoration(
+            color: AppColors.background,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.divider),
+          ),
+          child: Column(
+            children: [
+              for (var i = 0; i < players.length && i < 8; i++) ...[
+                if (i > 0)
+                  const Divider(height: 1, color: AppColors.divider),
+                ListTile(
+                  dense: true,
+                  title: Text(players[i].name,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 13)),
+                  subtitle: Text(
+                    'HCP ${players[i].handicap.toStringAsFixed(1)}'
+                    '${players[i].city != null ? ' · ${players[i].city}' : ''}',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  trailing: const Icon(Icons.add, size: 18),
+                  onTap: () => onPick(players[i]),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }
