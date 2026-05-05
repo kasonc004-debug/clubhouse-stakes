@@ -7,6 +7,9 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/network/image_uploader.dart';
 import '../../../core/widgets/cs_button.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../courses/models/course_model.dart';
+import '../../courses/providers/course_provider.dart';
+import '../../courses/widgets/course_picker.dart';
 import '../../players/providers/player_provider.dart';
 import '../models/clubhouse_model.dart';
 import '../providers/clubhouse_provider.dart';
@@ -33,8 +36,12 @@ class _ClubhouseEditScreenState extends ConsumerState<ClubhouseEditScreen> {
 
   late String _primary = widget.existing?.primaryColor ?? '#1B3D2C';
   late String _accent  = widget.existing?.accentColor  ?? '#C9A84C';
-  late bool   _isPublicCourse = widget.existing?.isPublicCourse ?? false;
-  late bool   _isPublic       = widget.existing?.isPublic ?? true;
+  late bool   _isPublic = widget.existing?.isPublic ?? true;
+
+  // Course (from golfcourseapi). Only meaningful on the create flow; on edit
+  // we don't expose a way to change it for now.
+  CourseSummary? _pickedCourse;
+  bool _loadingCourse = false;
 
   bool _uploadingLogo   = false;
   bool _uploadingBanner = false;
@@ -78,11 +85,51 @@ class _ClubhouseEditScreenState extends ConsumerState<ClubhouseEditScreen> {
     }
   }
 
-  void _onPublicCourseChanged(bool v) {
+  Future<void> _onCoursePicked(CourseSummary c) async {
     setState(() {
-      _isPublicCourse = v;
-      // Public courses default to a public clubhouse page.
-      if (v) _isPublic = true;
+      _pickedCourse = c;
+      _loadingCourse = true;
+    });
+    try {
+      final detail =
+          await ref.read(courseDetailProvider(c.id.toString()).future);
+      if (!mounted) return;
+      setState(() {
+        _course.text = detail.displayName;
+        if (detail.city != null && detail.city!.isNotEmpty) {
+          _city.text = detail.city!;
+        } else if (c.city != null) {
+          _city.text = c.city!;
+        }
+        if (detail.state != null && detail.state!.isNotEmpty) {
+          _state.text = detail.state!;
+        } else if (c.state != null) {
+          _state.text = c.state!;
+        }
+        if (detail.country != null && detail.country!.isNotEmpty) {
+          _country.text = detail.country!;
+        } else if (c.country != null) {
+          _country.text = c.country!;
+        }
+      });
+    } catch (_) {
+      // If the detail fetch fails, fall back to summary fields.
+      if (!mounted) return;
+      setState(() {
+        _course.text = c.displayName;
+        if (c.city != null) _city.text = c.city!;
+        if (c.state != null) _state.text = c.state!;
+        if (c.country != null) _country.text = c.country!;
+      });
+    } finally {
+      if (mounted) setState(() => _loadingCourse = false);
+    }
+  }
+
+  void _clearCourse() {
+    setState(() {
+      _pickedCourse = null;
+      _course.clear();
     });
   }
 
@@ -208,7 +255,7 @@ class _ClubhouseEditScreenState extends ConsumerState<ClubhouseEditScreen> {
       'primary_color': _primary,
       'accent_color':  _accent,
       'is_public':         _isPublic,
-      'is_public_course':  _isPublicCourse,
+      if (_pickedCourse != null) 'course_api_id': _pickedCourse!.id.toString(),
       if (_selectedOwner != null) 'owner_id': _selectedOwner!.id,
     };
 
@@ -273,14 +320,25 @@ class _ClubhouseEditScreenState extends ConsumerState<ClubhouseEditScreen> {
               validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
             ),
             const SizedBox(height: 14),
-            TextFormField(
-              controller: _course,
-              decoration: const InputDecoration(
-                labelText: 'Course name',
-                prefixIcon: Icon(Icons.golf_course_outlined),
+
+            // Course search via golfcourseapi — fills city/state/country.
+            if (_course.text.isEmpty)
+              CourseSearchField(
+                label: 'Course *',
+                onPicked: _onCoursePicked,
+              )
+            else
+              _PickedCourseCard(
+                courseName: _course.text,
+                location: [
+                  _city.text, _state.text, _country.text,
+                ].where((s) => s.isNotEmpty).join(', '),
+                loading: _loadingCourse,
+                onClear: _clearCourse,
               ),
-            ),
             const SizedBox(height: 14),
+
+            // Location — auto-filled from the course pick, still editable.
             Row(children: [
               Expanded(child: TextFormField(controller: _city,
                 decoration: const InputDecoration(labelText: 'City'))),
@@ -297,20 +355,12 @@ class _ClubhouseEditScreenState extends ConsumerState<ClubhouseEditScreen> {
             if (showOwnerPicker) _ownerSection(),
             if (showOwnerPicker) const SizedBox(height: 18),
 
-            // Public course → public clubhouse default
+            // Single Public / Private toggle for the clubhouse page.
             _ToggleCard(
-              title: 'Public golf course',
-              subtitle:
-                  'A municipal / open-to-public course. Clubhouse pages for these default to public.',
-              value: _isPublicCourse,
-              onChanged: _onPublicCourseChanged,
-            ),
-            const SizedBox(height: 10),
-            _ToggleCard(
-              title: 'Public clubhouse page',
+              title: 'Public clubhouse',
               subtitle: _isPublic
-                  ? 'Anyone can find this clubhouse and view tournaments.'
-                  : 'Only you and people you invite can view this page.',
+                  ? 'Anyone can find this clubhouse and view its tournaments.'
+                  : 'Only members and people you invite can view this page.',
               value: _isPublic,
               onChanged: (v) => setState(() => _isPublic = v),
             ),
@@ -478,6 +528,63 @@ class _ColorRow extends StatelessWidget {
       ]),
     );
   }
+}
+
+class _PickedCourseCard extends StatelessWidget {
+  final String courseName;
+  final String location;
+  final bool loading;
+  final VoidCallback onClear;
+  const _PickedCourseCard({
+    required this.courseName,
+    required this.location,
+    required this.loading,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: AppColors.primary.withOpacity(0.4), width: 1.5),
+        ),
+        child: Row(children: [
+          const Icon(Icons.golf_course, color: AppColors.primary, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(courseName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 14)),
+                  if (location.isNotEmpty)
+                    Text(location,
+                        style: const TextStyle(
+                            fontSize: 11, color: AppColors.textSecondary)),
+                ]),
+          ),
+          if (loading)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 10),
+              child: SizedBox(
+                  width: 14, height: 14,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: AppColors.primary)),
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.close, size: 18),
+              onPressed: onClear,
+              tooltip: 'Pick a different course',
+            ),
+        ]),
+      );
 }
 
 class _PickedOwnerCard extends StatelessWidget {

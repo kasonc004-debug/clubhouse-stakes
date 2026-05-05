@@ -59,6 +59,9 @@ function simplifyCourse(c) {
     club_name:    c.club_name || c.name,
     course_name:  c.course_name,
     location:     formatLocation(c.location),
+    city:         c.location?.city    || null,
+    state:        c.location?.state   || null,
+    country:      c.location?.country || null,
   };
 }
 
@@ -93,6 +96,9 @@ function detailedCourse(c) {
     club_name:   c.club_name || c.name,
     course_name: c.course_name,
     location:    formatLocation(c.location),
+    city:        c.location?.city    || null,
+    state:       c.location?.state   || null,
+    country:     c.location?.country || null,
     tees:        allTees,
   };
 }

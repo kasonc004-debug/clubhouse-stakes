@@ -7,12 +7,18 @@ class CourseSummary {
   final String clubName;
   final String? courseName;
   final String? location;
+  final String? city;
+  final String? state;
+  final String? country;
 
   const CourseSummary({
     required this.id,
     required this.clubName,
     this.courseName,
     this.location,
+    this.city,
+    this.state,
+    this.country,
   });
 
   String get displayName {
@@ -25,7 +31,10 @@ class CourseSummary {
         id:         _i(j['id']),
         clubName:   (j['club_name'] ?? 'Course') as String,
         courseName: j['course_name'] as String?,
-        location:   j['location'] as String?,
+        location:   j['location']    as String?,
+        city:       j['city']        as String?,
+        state:      j['state']       as String?,
+        country:    j['country']     as String?,
       );
 }
 
@@ -95,6 +104,9 @@ class CourseDetail {
   final String clubName;
   final String? courseName;
   final String? location;
+  final String? city;
+  final String? state;
+  final String? country;
   final List<CourseTee> tees;
 
   const CourseDetail({
@@ -102,6 +114,9 @@ class CourseDetail {
     required this.clubName,
     this.courseName,
     this.location,
+    this.city,
+    this.state,
+    this.country,
     required this.tees,
   });
 
@@ -115,7 +130,10 @@ class CourseDetail {
         id:         _i(j['id']),
         clubName:   (j['club_name'] ?? 'Course') as String,
         courseName: j['course_name'] as String?,
-        location:   j['location'] as String?,
+        location:   j['location']    as String?,
+        city:       j['city']        as String?,
+        state:      j['state']       as String?,
+        country:    j['country']     as String?,
         tees:       (j['tees'] as List? ?? [])
                        .map((e) => CourseTee.fromJson(e as Map<String, dynamic>))
                        .toList(),
