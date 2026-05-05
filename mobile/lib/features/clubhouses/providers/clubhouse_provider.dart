@@ -79,6 +79,18 @@ class ClubhouseEditNotifier extends StateNotifier<AsyncValue<ClubhouseModel?>> {
       return null;
     }
   }
+
+  Future<bool> deleteClubhouse(String id) async {
+    state = const AsyncLoading();
+    try {
+      await _api.delete(ApiConstants.clubhouseById(id));
+      state = const AsyncData(null);
+      return true;
+    } on DioException catch (e) {
+      state = AsyncError(ApiException.fromDio(e), StackTrace.current);
+      return false;
+    }
+  }
 }
 
 final clubhouseEditProvider =

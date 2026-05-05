@@ -143,3 +143,27 @@ final adminPaymentProvider = StateNotifierProvider.autoDispose
     .family<AdminPaymentNotifier, AsyncValue<void>, String>((ref, _) {
   return AdminPaymentNotifier(ref.read(apiClientProvider));
 });
+
+// ── Tournament delete ───────────────────────────────────────────────────────
+
+class DeleteTournamentNotifier extends StateNotifier<AsyncValue<void>> {
+  final ApiClient _api;
+  DeleteTournamentNotifier(this._api) : super(const AsyncData(null));
+
+  Future<bool> delete(String tournamentId) async {
+    state = const AsyncLoading();
+    try {
+      await _api.delete(ApiConstants.adminDeleteTournament(tournamentId));
+      state = const AsyncData(null);
+      return true;
+    } on DioException catch (e) {
+      state = AsyncError(ApiException.fromDio(e), StackTrace.current);
+      return false;
+    }
+  }
+}
+
+final deleteTournamentProvider = StateNotifierProvider.autoDispose<
+    DeleteTournamentNotifier, AsyncValue<void>>(
+  (ref) => DeleteTournamentNotifier(ref.read(apiClientProvider)),
+);

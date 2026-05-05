@@ -83,6 +83,7 @@ async function canManageTournament(req, res, next) {
 }
 
 router.patch('/tournaments/:id', requireAuth, canManageTournament, ctrl.updateTournament);
+router.delete('/tournaments/:id', requireAuth, canManageTournament, ctrl.deleteTournament);
 router.get('/tournaments/:id/participants', requireAuth, canManageTournament, ctrl.adminGetParticipants);
 router.get('/tournaments/:id/financials', requireAuth, canManageTournament, ctrl.getFinancials);
 router.patch('/tournaments/:id/financials', requireAuth, canManageTournament, ctrl.updateFinancials);

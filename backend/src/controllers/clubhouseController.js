@@ -509,12 +509,36 @@ async function acceptInvite(req, res) {
   }
 }
 
+// DELETE /api/clubhouses/:id — owner or system admin
+async function deleteClubhouse(req, res) {
+  const { id } = req.params;
+  try {
+    const { rows: chRows } = await db.query(
+      'SELECT owner_id, name FROM clubhouses WHERE id = $1', [id]
+    );
+    if (!chRows.length) return res.status(404).json({ error: 'Clubhouse not found' });
+    if (chRows[0].owner_id !== req.user.id && !req.user.is_admin) {
+      return res.status(403).json({
+        error: 'Only the owner or a system admin can delete this clubhouse.',
+      });
+    }
+    // tournaments.clubhouse_id is ON DELETE SET NULL — events stay, lose
+    // their clubhouse association. clubhouse_members + email_invites cascade.
+    await db.query('DELETE FROM clubhouses WHERE id = $1', [id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to delete clubhouse' });
+  }
+}
+
 module.exports = {
   listPublicClubhouses,
   listMyClubhouses,
   getClubhouseBySlug,
   createClubhouse,
   updateClubhouse,
+  deleteClubhouse,
   followClubhouse,
   unfollowClubhouse,
   inviteToClubhouse,

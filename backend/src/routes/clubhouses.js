@@ -7,6 +7,7 @@ router.get('/mine', requireAuth, ctrl.listMyClubhouses);
 router.get('/:slug', optionalAuth, ctrl.getClubhouseBySlug);
 router.post('/',     requireAuth,  ctrl.createClubhouse);
 router.patch('/:id', requireAuth,  ctrl.updateClubhouse);
+router.delete('/:id', requireAuth, ctrl.deleteClubhouse);
 
 // Membership
 router.post('/:id/follow',         requireAuth, ctrl.followClubhouse);

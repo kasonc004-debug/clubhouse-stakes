@@ -271,4 +271,33 @@ async function adminUpdateScore(req, res) {
   }
 }
 
-module.exports = { createTournament, updateTournament, adminGetParticipants, getFinancials, updateFinancials, adminUpdateScore, adminUpdatePayment };
+// DELETE /api/admin/tournaments/:id
+// Permission gate is applied at the route layer (canManageTournament).
+async function deleteTournament(req, res) {
+  const { id } = req.params;
+  const client = await db.getClient();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      'SELECT id FROM tournaments WHERE id = $1', [id]
+    );
+    if (!rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Tournament not found' });
+    }
+    // payouts FK isn't CASCADE — purge them first.
+    await client.query('DELETE FROM payouts WHERE tournament_id = $1', [id]);
+    // entries + teams cascade automatically.
+    await client.query('DELETE FROM tournaments WHERE id = $1', [id]);
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error(err);
+    res.status(500).json({ error: 'Failed to delete tournament' });
+  } finally {
+    client.release();
+  }
+}
+
+module.exports = { createTournament, updateTournament, adminGetParticipants, getFinancials, updateFinancials, adminUpdateScore, adminUpdatePayment, deleteTournament };

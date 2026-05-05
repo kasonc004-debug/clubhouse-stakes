@@ -74,4 +74,5 @@ class ApiConstants {
   static String adminFinancials(String id)           => '/admin/tournaments/$id/financials';
   static String adminUpdateScore(String id, String entryId) => '/admin/tournaments/$id/scores/$entryId';
   static String adminUpdatePayment(String id, String entryId) => '/admin/tournaments/$id/entries/$entryId/payment';
+  static String adminDeleteTournament(String id) => '/admin/tournaments/$id';
 }
