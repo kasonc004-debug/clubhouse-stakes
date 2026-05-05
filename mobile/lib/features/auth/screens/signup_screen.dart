@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/widgets/clubhouse_logo.dart';
 import '../../../core/widgets/cs_button.dart';
 import '../providers/auth_provider.dart';
 
@@ -65,15 +66,74 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     final auth = ref.watch(authProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Create Account'), backgroundColor: Colors.transparent,
-        foregroundColor: AppColors.primary, elevation: 0),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (auth.error != null)
+      backgroundColor: AppColors.primaryDeep,
+      body: Stack(children: [
+        // Background gradient (matches login)
+        Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                AppColors.primaryDeep,
+                Color(0xFF2D4227),
+                Color(0xFF3D5832),
+              ],
+              stops: [0.0, 0.5, 1.0],
+            ),
+          ),
+        ),
+        SafeArea(
+          child: Column(children: [
+            // Back button row
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+              child: Row(children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_new,
+                      color: Colors.white70, size: 18),
+                  onPressed: () => context.go('/login'),
+                ),
+              ]),
+            ),
+
+            // Big centered logo
+            const Padding(
+              padding: EdgeInsets.fromLTRB(32, 12, 32, 28),
+              child: ClubhouseLogo(width: 240),
+            ),
+
+            // Form panel
+            Expanded(
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: AppColors.cream,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'CREATE ACCOUNT',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 2,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Join the course.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      if (auth.error != null)
                 Container(
                   margin: const EdgeInsets.only(bottom: 16),
                   padding: const EdgeInsets.all(12),
@@ -204,10 +264,14 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   ),
                 ]),
               ),
-            ],
-          ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ]),
         ),
-      ),
+      ]),
     );
   }
 }

@@ -1,80 +1,80 @@
 import 'package:flutter/material.dart';
 
+/// Marquee text-style wordmark used on the home hero, login, and signup.
+///
+/// "CLUBHOUSE" sits on top in white. A thin gold rule separates it from the
+/// gold "STAKES" wordmark below. A small "PRIZE POOL GOLF" tagline anchors
+/// the bottom. Designed to sit on the dark green hero gradient.
 class ClubhouseLogo extends StatelessWidget {
   final double width;
+  final bool showTagline;
+  final Color primaryColor;
+  final Color accentColor;
 
-  const ClubhouseLogo({super.key, this.width = 260});
+  const ClubhouseLogo({
+    super.key,
+    this.width = 280,
+    this.showTagline = true,
+    this.primaryColor = Colors.white,
+    this.accentColor = const Color(0xFFC9A84C),
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    // Scale typography off the requested width so the logo stays balanced
+    // on tiny avatar uses (width=80) and large hero uses (width=320).
+    final clubhouseSize = width * 0.155;
+    final stakesSize    = width * 0.155;
+    final taglineSize   = width * 0.034;
+    final ruleWidth     = width * 0.55;
+
+    return SizedBox(
       width: width,
-      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 22),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1B3D2C),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFC9A84C), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.35),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Trophy with flag
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              const Icon(
-                Icons.emoji_events_rounded,
-                color: Color(0xFFC9A84C),
-                size: 56,
-              ),
-              Positioned(
-                right: 0,
-                top: 6,
-                child: Container(
-                  width: 3,
-                  height: 18,
-                  color: const Color(0xFFC9A84C),
-                ),
-              ),
-              Positioned(
-                right: 3,
-                top: 6,
-                child: Container(
-                  width: 10,
-                  height: 8,
-                  color: const Color(0xFFC9A84C),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'CLUBHOUSE STAKES',
+          Text(
+            'CLUBHOUSE',
+            textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white,
-              fontSize: 20,
+              color: primaryColor,
+              fontSize: clubhouseSize,
               fontWeight: FontWeight.w900,
-              letterSpacing: 2.5,
+              letterSpacing: clubhouseSize * 0.18,
               height: 1.0,
             ),
           ),
-          const SizedBox(height: 5),
-          const Text(
-            'PRIZE POOL GOLF TOURNAMENTS',
-            style: TextStyle(
-              color: Color(0xFFC9A84C),
-              fontSize: 8.5,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 2,
+          Padding(
+            padding: EdgeInsets.symmetric(vertical: width * 0.012),
+            child: Container(
+              width: ruleWidth,
+              height: 2,
+              color: accentColor,
             ),
           ),
+          Text(
+            'STAKES',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: accentColor,
+              fontSize: stakesSize,
+              fontWeight: FontWeight.w900,
+              letterSpacing: stakesSize * 0.34,
+              height: 1.0,
+            ),
+          ),
+          if (showTagline) ...[
+            SizedBox(height: width * 0.026),
+            Text(
+              'PRIZE POOL GOLF',
+              style: TextStyle(
+                color: primaryColor.withOpacity(0.55),
+                fontSize: taglineSize,
+                fontWeight: FontWeight.w600,
+                letterSpacing: taglineSize * 0.5,
+              ),
+            ),
+          ],
         ],
       ),
     );

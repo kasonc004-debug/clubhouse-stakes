@@ -5,6 +5,7 @@ import 'features/auth/providers/auth_provider.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/signup_screen.dart';
 import 'features/auth/screens/terms_screen.dart';
+import 'features/auth/screens/marketing_screen.dart';
 import 'features/tournaments/screens/home_screen.dart';
 import 'features/tournaments/screens/tournament_detail_screen.dart';
 import 'features/teams/screens/create_team_screen.dart';
@@ -43,7 +44,9 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final auth     = ref.read(authProvider);
       final loggedIn = auth.isAuthenticated;
-      const publicPaths = {'/login', '/signup', '/terms', '/privacy'};
+      const publicPaths = {
+        '/login', '/signup', '/terms', '/privacy', '/about', '/for-clubs',
+      };
       final isPublic = publicPaths.contains(state.matchedLocation);
       if (!loggedIn && !isPublic) return '/login';
       if (loggedIn && (state.matchedLocation == '/login' || state.matchedLocation == '/signup')) {
@@ -54,8 +57,10 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(path: '/login',  builder: (_, __) => const LoginScreen()),
       GoRoute(path: '/signup', builder: (_, __) => const SignupScreen()),
-      GoRoute(path: '/terms',   builder: (_, __) => const TermsScreen()),
-      GoRoute(path: '/privacy', builder: (_, __) => const TermsScreen(privacy: true)),
+      GoRoute(path: '/terms',     builder: (_, __) => const TermsScreen()),
+      GoRoute(path: '/privacy',   builder: (_, __) => const TermsScreen(privacy: true)),
+      GoRoute(path: '/about',     builder: (_, __) => const MarketingScreen(variant: 'about')),
+      GoRoute(path: '/for-clubs', builder: (_, __) => const MarketingScreen(variant: 'clubs')),
 
       GoRoute(path: '/home',   builder: (_, __) => const HomeScreen()),
 

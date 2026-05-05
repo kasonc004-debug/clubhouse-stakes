@@ -10,6 +10,7 @@ mobile/.flutter-plugins-dependencies
 mobile/.pub-cache/
 mobile/.pub/
 mobile/build/
+mobile/.wrangler/
 mobile/android/.gradle/
 mobile/android/local.properties
 mobile/android/key.properties

@@ -246,6 +246,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ),
                           ],
                         ),
+                        const SizedBox(height: 16),
+                        const Divider(color: AppColors.divider, height: 1),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            TextButton(
+                              onPressed: () => context.push('/about'),
+                              child: const Text('About Us',
+                                  style: TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600)),
+                            ),
+                            const Text('·',
+                                style: TextStyle(color: AppColors.textSecondary)),
+                            TextButton(
+                              onPressed: () => context.push('/for-clubs'),
+                              child: const Text('For Clubs',
+                                  style: TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600)),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),

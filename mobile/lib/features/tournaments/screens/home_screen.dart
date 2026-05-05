@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../notifications/widgets/bell_button.dart';
 import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/widgets/clubhouse_logo.dart';
 import '../../../core/widgets/loading_overlay.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/tournament_provider.dart';
@@ -479,7 +480,6 @@ class _HeroBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 260,
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -513,85 +513,100 @@ class _HeroBanner extends StatelessWidget {
           ),
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 12, 20, 24),
+              padding: const EdgeInsets.fromLTRB(20, 8, 16, 28),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // Top action bar — right-aligned
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      const _InlineLogo(),
-                      Row(children: [
-                        const BellButton(),
+                      const BellButton(),
+                      IconButton(
+                        tooltip: 'Clubhouses',
+                        icon: const Icon(Icons.flag_outlined,
+                            color: Colors.white70, size: 22),
+                        onPressed: () => context.push('/clubhouses'),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.search_rounded,
+                            color: Colors.white70, size: 22),
+                        onPressed: onSearchTap,
+                      ),
+                      if (onAdminTap != null)
                         IconButton(
-                          tooltip: 'Clubhouses',
-                          icon: const Icon(Icons.flag_outlined,
-                              color: Colors.white70, size: 22),
-                          onPressed: () => context.push('/clubhouses'),
+                          icon: const Icon(
+                              Icons.admin_panel_settings_outlined,
+                              color: Colors.white70,
+                              size: 22),
+                          onPressed: onAdminTap,
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.search_rounded,
-                              color: Colors.white70, size: 22),
-                          onPressed: onSearchTap,
-                        ),
-                        if (onAdminTap != null)
-                          IconButton(
-                            icon: const Icon(
-                                Icons.admin_panel_settings_outlined,
-                                color: Colors.white70,
-                                size: 22),
-                            onPressed: onAdminTap,
+                      const SizedBox(width: 4),
+                      GestureDetector(
+                        onTap: onProfileTap,
+                        child: Container(
+                          width: 38, height: 38,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withOpacity(0.15),
+                            border: Border.all(
+                                color: Colors.white30, width: 2),
                           ),
-                        GestureDetector(
-                          onTap: onProfileTap,
-                          child: Container(
-                            width: 38, height: 38,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.white.withOpacity(0.15),
-                              border: Border.all(
-                                  color: Colors.white30, width: 2),
-                            ),
-                            child: const Icon(Icons.person,
-                                color: Colors.white, size: 20),
-                          ),
+                          child: const Icon(Icons.person,
+                              color: Colors.white, size: 20),
                         ),
-                      ]),
+                      ),
                     ],
                   ),
-                  const Spacer(),
-                  Text('HELLO',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.6),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 3,
-                      )),
-                  Text(
-                    '${name.toUpperCase()}!',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 34,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1,
-                      height: 1.1,
+                  const SizedBox(height: 18),
+
+                  // Big centered wordmark
+                  const Center(child: ClubhouseLogo(width: 260)),
+                  const SizedBox(height: 18),
+
+                  // Welcome line
+                  if (name.trim().isNotEmpty)
+                    Center(
+                      child: Text(
+                        'Welcome back, ${name.split(' ').first}',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.7),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  GestureDetector(
-                    onTap: onCityTap,
-                    child: Row(children: [
-                      const Icon(Icons.location_on_outlined,
-                          color: Color(0xFFC9A84C), size: 14),
-                      const SizedBox(width: 5),
-                      Text(effectiveCity ?? 'All Cities',
-                          style: const TextStyle(
-                              color: Colors.white70, fontSize: 13,
-                              fontWeight: FontWeight.w500)),
-                      const SizedBox(width: 3),
-                      const Icon(Icons.keyboard_arrow_down,
-                          color: Colors.white60, size: 16),
-                    ]),
+                  const SizedBox(height: 12),
+
+                  // City filter pill (centered)
+                  Center(
+                    child: GestureDetector(
+                      onTap: onCityTap,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                              color: const Color(0xFFC9A84C).withOpacity(0.5)),
+                        ),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          const Icon(Icons.location_on_outlined,
+                              color: Color(0xFFC9A84C), size: 16),
+                          const SizedBox(width: 6),
+                          Text(effectiveCity ?? 'All Cities',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600)),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.keyboard_arrow_down,
+                              color: Colors.white70, size: 16),
+                        ]),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -601,40 +616,6 @@ class _HeroBanner extends StatelessWidget {
       ),
     );
   }
-}
-
-// ── Inline logo ───────────────────────────────────────────────────────────────
-class _InlineLogo extends StatelessWidget {
-  const _InlineLogo();
-
-  @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Icon(Icons.emoji_events_rounded,
-          color: const Color(0xFFC9A84C), size: 26),
-      const SizedBox(width: 8),
-      RichText(
-        text: const TextSpan(children: [
-          TextSpan(
-              text: 'CLUBHOUSE',
-              style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.5)),
-          TextSpan(text: ' '),
-          TextSpan(
-              text: 'STAKES',
-              style: TextStyle(
-                  color: Color(0xFFC9A84C),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.5)),
-        ]),
-      ),
-    ],
-  );
 }
 
 // ── Generic upcoming tournament card ─────────────────────────────────────────
