@@ -24,7 +24,6 @@ class _CreateTournamentScreenState extends ConsumerState<CreateTournamentScreen>
   final _formKey      = GlobalKey<FormState>();
   final _nameCtrl     = TextEditingController();
   final _cityCtrl     = TextEditingController();
-  final _courseCtrl   = TextEditingController();
   final _descCtrl     = TextEditingController();
   final _rulesCtrl    = TextEditingController();
   final _feeCtrl      = TextEditingController();
@@ -51,7 +50,7 @@ class _CreateTournamentScreenState extends ConsumerState<CreateTournamentScreen>
 
   @override
   void dispose() {
-    _nameCtrl.dispose(); _cityCtrl.dispose(); _courseCtrl.dispose();
+    _nameCtrl.dispose(); _cityCtrl.dispose();
     _descCtrl.dispose(); _rulesCtrl.dispose(); _feeCtrl.dispose();
     _maxCtrl.dispose(); _skinsFeeCtrl.dispose();
     super.dispose();
@@ -70,7 +69,6 @@ class _CreateTournamentScreenState extends ConsumerState<CreateTournamentScreen>
       if (!mounted) return;
       setState(() {
         _courseDetail = detail;
-        _courseCtrl.text = detail.displayName;
         if (detail.location != null && detail.location!.isNotEmpty) {
           _cityCtrl.text = detail.location!;
         }
@@ -101,7 +99,6 @@ class _CreateTournamentScreenState extends ConsumerState<CreateTournamentScreen>
       _courseDetail  = null;
       _pickedTee     = null;
       _yardages      = null;
-      _courseCtrl.clear();
     });
   }
 
@@ -134,7 +131,7 @@ class _CreateTournamentScreenState extends ConsumerState<CreateTournamentScreen>
           'sign_up_fee': double.parse(_feeCtrl.text),
           'max_players': int.parse(_maxCtrl.text),
           'fee_per':     _feePer,
-          'course_name': _courseCtrl.text.trim().isEmpty ? null : _courseCtrl.text.trim(),
+          'course_name': _courseDetail?.displayName ?? _pickedCourse?.displayName,
           'description': _descCtrl.text.trim().isEmpty  ? null : _descCtrl.text.trim(),
           'rules':       _rulesCtrl.text.trim().isEmpty ? null : _rulesCtrl.text.trim(),
           'skins_fee':   skinsFee > 0 ? skinsFee : 0,
@@ -207,21 +204,15 @@ class _CreateTournamentScreenState extends ConsumerState<CreateTournamentScreen>
               ),
             const SizedBox(height: 14),
 
-            // City + course-name fallback (free-text). Auto-filled from course
-            // selection but the host can still tweak.
-            Row(children: [
-              Expanded(child: TextFormField(controller: _cityCtrl,
-                decoration: const InputDecoration(
-                    labelText: 'City *',
-                    prefixIcon: Icon(Icons.location_city_outlined)),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Required' : null)),
-              const SizedBox(width: 12),
-              Expanded(child: TextFormField(controller: _courseCtrl,
-                decoration: const InputDecoration(
-                    labelText: 'Course Name',
-                    prefixIcon: Icon(Icons.grass_outlined)))),
-            ]),
+            // City — auto-filled from the course's location, can be tweaked.
+            TextFormField(
+              controller: _cityCtrl,
+              decoration: const InputDecoration(
+                  labelText: 'City *',
+                  prefixIcon: Icon(Icons.location_city_outlined)),
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Required' : null,
+            ),
             const SizedBox(height: 14),
 
             // Date picker
