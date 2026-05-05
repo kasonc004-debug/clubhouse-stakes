@@ -15,29 +15,32 @@ class SignupScreen extends ConsumerStatefulWidget {
 }
 
 class _SignupScreenState extends ConsumerState<SignupScreen> {
-  final _formKey     = GlobalKey<FormState>();
-  final _nameCtrl    = TextEditingController();
-  final _emailCtrl   = TextEditingController();
-  final _passCtrl    = TextEditingController();
-  final _cityCtrl    = TextEditingController();
-  double _handicap   = 0;
-  bool   _obscure    = true;
+  final _formKey       = GlobalKey<FormState>();
+  final _nameCtrl      = TextEditingController();
+  final _emailCtrl     = TextEditingController();
+  final _passCtrl      = TextEditingController();
+  final _cityCtrl      = TextEditingController();
+  final _handicapCtrl  = TextEditingController();
+  bool   _obscure      = true;
 
   @override
   void dispose() {
     _nameCtrl.dispose(); _emailCtrl.dispose();
     _passCtrl.dispose(); _cityCtrl.dispose();
+    _handicapCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _signup() async {
     if (!_formKey.currentState!.validate()) return;
     final notifier = ref.read(authProvider.notifier);
+    final handicap =
+        double.tryParse(_handicapCtrl.text.trim()) ?? 0;
     final ok = await notifier.signup(
       name:     _nameCtrl.text.trim(),
       email:    _emailCtrl.text.trim(),
       password: _passCtrl.text,
-      handicap: _handicap,
+      handicap: handicap,
       city:     _cityCtrl.text.trim().isEmpty ? null : _cityCtrl.text.trim(),
     );
     if (!ok || !mounted) return;
@@ -189,35 +192,24 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       prefixIcon: Icon(Icons.location_city_outlined),
                     ),
                   ),
-                  const SizedBox(height: 20),
-                  // Handicap slider
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(children: [
-                        const Text('Handicap', style: TextStyle(fontWeight: FontWeight.w500)),
-                        const Spacer(),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(_handicap == 0 ? 'Scratch' : '+${_handicap.toStringAsFixed(1)}',
-                            style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600)),
-                        ),
-                      ]),
-                      Slider(
-                        value: _handicap,
-                        min: 0, max: 54, divisions: 108,
-                        activeColor: AppColors.primary,
-                        onChanged: (v) => setState(() => _handicap = v),
-                      ),
-                      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: const [
-                        Text('Scratch', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-                        Text('54', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-                      ]),
-                    ],
+                  const SizedBox(height: 14),
+                  // Handicap — typed in (0 to 54, decimal allowed)
+                  TextFormField(
+                    controller: _handicapCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Handicap',
+                      hintText: '0 = scratch, 18 = mid, 54 = max',
+                      prefixIcon: Icon(Icons.golf_course_outlined),
+                      suffixText: 'index',
+                    ),
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return null; // optional
+                      final n = double.tryParse(v.trim());
+                      if (n == null) return 'Enter a number';
+                      if (n < 0 || n > 54) return 'Must be between 0 and 54';
+                      return null;
+                    },
                   ),
                   const SizedBox(height: 28),
                   CSButton(label: 'Create Account', loading: auth.loading, onPressed: _signup),
