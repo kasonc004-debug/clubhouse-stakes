@@ -26,6 +26,7 @@ class _InviteMemberSheetState extends ConsumerState<InviteMemberSheet> {
   Timer?  _debounce;
   String  _query = '';
   bool    _busy = false;
+  bool    _asStaff = false;
 
   bool get _looksLikeEmail =>
       RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+').hasMatch(_query.trim());
@@ -51,13 +52,16 @@ class _InviteMemberSheetState extends ConsumerState<InviteMemberSheet> {
             clubhouseId: widget.clubhouseId,
             userId: userId,
             email: email,
+            asStaff: _asStaff,
           );
       if (!mounted) return;
       Navigator.of(context).pop();
+      final base = kind == 'email_invite'
+          ? 'Email invite sent — they\'ll be added when they sign up.'
+          : 'Invite sent.';
+      final suffix = _asStaff ? ' Granted staff access.' : '';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(kind == 'email_invite'
-            ? 'Email invite sent — they\'ll be added when they sign up.'
-            : 'Invite sent.'),
+        content: Text('$base$suffix'),
         backgroundColor: AppColors.success,
         behavior: SnackBarBehavior.floating,
       ));
@@ -110,6 +114,37 @@ class _InviteMemberSheetState extends ConsumerState<InviteMemberSheet> {
                 labelText: 'Name or email',
                 hintText: 'Search a player or paste an email',
                 prefixIcon: Icon(Icons.search),
+              ),
+            ),
+            const SizedBox(height: 10),
+            // Staff toggle
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _asStaff
+                      ? const Color(0xFFC9A84C).withOpacity(0.5)
+                      : AppColors.divider,
+                  width: _asStaff ? 1.5 : 1,
+                ),
+              ),
+              child: SwitchListTile.adaptive(
+                value: _asStaff,
+                onChanged: (v) => setState(() => _asStaff = v),
+                activeColor: const Color(0xFFC9A84C),
+                title: const Text('Invite as staff',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text(
+                  _asStaff
+                      ? 'They\'ll be able to edit the clubhouse page and post tournaments.'
+                      : 'Default — view-only member.',
+                  style: const TextStyle(
+                      fontSize: 11, color: AppColors.textSecondary),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                dense: true,
               ),
             ),
             const SizedBox(height: 12),

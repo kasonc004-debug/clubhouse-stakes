@@ -36,7 +36,10 @@ class ClubhousePageScreen extends ConsumerWidget {
           final ch = page.clubhouse;
           final primary = _hex(ch.primaryColor);
           final accent  = _hex(ch.accentColor);
-          final canEdit = me != null && me.id == ch.ownerId;
+          // Backend tells us whether the current user can manage. Falls back
+          // to ownership for older clients/responses.
+          final canEdit = page.canManage ||
+              (me != null && me.id == ch.ownerId);
 
           return CustomScrollView(slivers: [
             SliverAppBar(
@@ -145,7 +148,7 @@ class ClubhousePageScreen extends ConsumerWidget {
               ),
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
+                padding: const EdgeInsets.fromLTRB(20, 24, 12, 8),
                 child: Row(children: [
                   Text('TOURNAMENTS · ${page.tournaments.length}',
                       style: const TextStyle(
@@ -153,6 +156,19 @@ class ClubhousePageScreen extends ConsumerWidget {
                           fontWeight: FontWeight.w800,
                           letterSpacing: 1.5,
                           color: AppColors.textSecondary)),
+                  const Spacer(),
+                  if (canEdit)
+                    TextButton.icon(
+                      onPressed: () =>
+                          context.push('/admin/create-tournament'),
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text('Post Tournament'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: primary,
+                        textStyle: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w700),
+                      ),
+                    ),
                 ]),
               ),
             ),

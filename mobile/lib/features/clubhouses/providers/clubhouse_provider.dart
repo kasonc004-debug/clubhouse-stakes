@@ -121,6 +121,7 @@ class ClubhouseMembershipActions {
     required String clubhouseId,
     String? userId,
     String? email,
+    bool asStaff = false,
   }) async {
     try {
       final resp = await _api.post(
@@ -128,6 +129,7 @@ class ClubhouseMembershipActions {
         data: {
           if (userId != null) 'user_id': userId,
           if (email != null) 'email': email,
+          'role': asStaff ? 'staff' : 'member',
         },
       );
       return resp.data['kind'] as String? ?? 'invited';

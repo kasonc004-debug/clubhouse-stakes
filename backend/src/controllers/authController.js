@@ -51,7 +51,7 @@ async function signup(req, res) {
 // clubhouse memberships for the new user. Returns the list of slugs attached.
 async function applyPendingEmailInvites(userId, lcEmail) {
   const { rows: invites } = await db.query(
-    `SELECT id, clubhouse_id FROM clubhouse_email_invites
+    `SELECT id, clubhouse_id, role FROM clubhouse_email_invites
      WHERE LOWER(email) = $1 AND accepted_at IS NULL`,
     [lcEmail]
   );
@@ -60,10 +60,11 @@ async function applyPendingEmailInvites(userId, lcEmail) {
   const attachedSlugs = [];
   for (const inv of invites) {
     await db.query(
-      `INSERT INTO clubhouse_members (clubhouse_id, user_id, status, invited_by)
-       VALUES ($1, $2, 'member', NULL)
-       ON CONFLICT (clubhouse_id, user_id) DO UPDATE SET status = 'member'`,
-      [inv.clubhouse_id, userId]
+      `INSERT INTO clubhouse_members (clubhouse_id, user_id, status, role, invited_by)
+       VALUES ($1, $2, 'member', $3, NULL)
+       ON CONFLICT (clubhouse_id, user_id)
+         DO UPDATE SET status = 'member', role = EXCLUDED.role`,
+      [inv.clubhouse_id, userId, inv.role || 'member']
     );
     await db.query(
       `UPDATE clubhouse_email_invites

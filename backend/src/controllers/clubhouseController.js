@@ -3,6 +3,22 @@ const db = require('../config/database');
 const { notify } = require('./notificationController');
 const { sendMail } = require('../config/mailer');
 
+/// Returns true if the user can manage (edit + post tournaments under) the
+/// given clubhouse. Owners + system admins always can; staff role too.
+async function canManageClubhouse(userId, clubhouseId, isAdmin = false) {
+  if (!userId || !clubhouseId) return false;
+  if (isAdmin) return true;
+  const { rows } = await db.query(
+    `SELECT 1 FROM clubhouses WHERE id = $1 AND owner_id = $2
+     UNION
+     SELECT 1 FROM clubhouse_members
+       WHERE clubhouse_id = $1 AND user_id = $2
+         AND role = 'staff' AND status = 'member'`,
+    [clubhouseId, userId]
+  );
+  return rows.length > 0;
+}
+
 // Limit user-supplied fields to a known whitelist.
 const EDITABLE_FIELDS = [
   'name', 'course_name', 'city', 'state', 'country', 'about',
@@ -60,10 +76,22 @@ async function listPublicClubhouses(req, res) {
 }
 
 // GET /api/clubhouses/mine
+// Returns clubhouses the user owns OR is staff at.
 async function listMyClubhouses(req, res) {
   try {
     const { rows } = await db.query(
-      `SELECT * FROM clubhouses WHERE owner_id = $1 ORDER BY created_at DESC`,
+      `SELECT c.*,
+              CASE WHEN c.owner_id = $1 THEN 'owner' ELSE 'staff' END AS my_role
+       FROM clubhouses c
+       WHERE c.owner_id = $1
+          OR EXISTS (
+               SELECT 1 FROM clubhouse_members m
+                WHERE m.clubhouse_id = c.id
+                  AND m.user_id = $1
+                  AND m.role = 'staff'
+                  AND m.status = 'member'
+             )
+       ORDER BY c.created_at DESC`,
       [req.user.id]
     );
     res.json({ clubhouses: rows });
@@ -104,24 +132,44 @@ async function getClubhouseBySlug(req, res) {
       [ch.id]
     );
 
-    // Membership status of the current user
+    // Membership status + role of the current user
     let membershipStatus = null;
-    let memberCount = 0;
+    let memberRole = null;
+    let canManage = false;
     if (req.user) {
-      const { rows: mem } = await db.query(
-        'SELECT status FROM clubhouse_members WHERE clubhouse_id = $1 AND user_id = $2',
-        [ch.id, req.user.id]
-      );
-      membershipStatus = mem.length ? mem[0].status : null;
+      if (req.user.id === ch.owner_id) {
+        memberRole = 'owner';
+        membershipStatus = 'member';
+        canManage = true;
+      } else if (req.user.is_admin) {
+        canManage = true;
+      } else {
+        const { rows: mem } = await db.query(
+          'SELECT status, role FROM clubhouse_members WHERE clubhouse_id = $1 AND user_id = $2',
+          [ch.id, req.user.id]
+        );
+        if (mem.length) {
+          membershipStatus = mem[0].status;
+          memberRole       = mem[0].role;
+          if (memberRole === 'staff' && membershipStatus === 'member') canManage = true;
+        }
+      }
     }
     const { rows: countRows } = await db.query(
       `SELECT COUNT(*)::int AS c FROM clubhouse_members
        WHERE clubhouse_id = $1 AND status = 'member'`,
       [ch.id]
     );
-    memberCount = countRows[0].c;
+    const memberCount = countRows[0].c;
 
-    res.json({ clubhouse: ch, tournaments, membership_status: membershipStatus, member_count: memberCount });
+    res.json({
+      clubhouse:          ch,
+      tournaments,
+      membership_status:  membershipStatus,
+      member_role:        memberRole,
+      can_manage:         canManage,
+      member_count:       memberCount,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to load clubhouse' });
@@ -163,16 +211,12 @@ async function createClubhouse(req, res) {
   }
 }
 
-// PATCH /api/clubhouses/:id — owner only
+// PATCH /api/clubhouses/:id — owner / staff / system admin
 async function updateClubhouse(req, res) {
   const { id } = req.params;
   try {
-    const { rows: ownRows } = await db.query(
-      'SELECT owner_id FROM clubhouses WHERE id = $1', [id]
-    );
-    if (!ownRows.length) return res.status(404).json({ error: 'Clubhouse not found' });
-    if (ownRows[0].owner_id !== req.user.id && !req.user.is_admin) {
-      return res.status(403).json({ error: 'Not your clubhouse' });
+    if (!await canManageClubhouse(req.user.id, id, req.user.is_admin)) {
+      return res.status(403).json({ error: 'You don\'t have permission to edit this clubhouse' });
     }
 
     const updates = [];
@@ -246,10 +290,11 @@ async function unfollowClubhouse(req, res) {
 // Owner-only.
 async function inviteToClubhouse(req, res) {
   const { id } = req.params;
-  const { user_id: targetId, email } = req.body || {};
+  const { user_id: targetId, email, role: rawRole } = req.body || {};
   if (!targetId && !email) {
     return res.status(422).json({ error: 'Provide user_id or email' });
   }
+  const role = rawRole === 'staff' ? 'staff' : 'member';
 
   try {
     const { rows: chRows } = await db.query(
@@ -280,22 +325,28 @@ async function inviteToClubhouse(req, res) {
       );
       if (!targetRows.length) return res.status(404).json({ error: 'User not found' });
 
+      // If invited again with a different role, upgrade. Otherwise insert.
       await db.query(
-        `INSERT INTO clubhouse_members (clubhouse_id, user_id, status, invited_by)
-         VALUES ($1, $2, 'invited', $3)
-         ON CONFLICT (clubhouse_id, user_id) DO NOTHING`,
-        [id, resolvedUserId, req.user.id]
+        `INSERT INTO clubhouse_members (clubhouse_id, user_id, status, role, invited_by)
+         VALUES ($1, $2, 'invited', $3, $4)
+         ON CONFLICT (clubhouse_id, user_id)
+         DO UPDATE SET role = EXCLUDED.role`,
+        [id, resolvedUserId, role, req.user.id]
       );
 
       await notify({
         userIds: [resolvedUserId],
         type:    'clubhouse_invite',
-        title:   `${ch.name} invited you to their clubhouse`,
-        body:    'Tap to view and accept.',
+        title:   role === 'staff'
+          ? `${ch.name} invited you as staff`
+          : `${ch.name} invited you to their clubhouse`,
+        body:    role === 'staff'
+          ? 'You\'ll be able to edit the clubhouse page and post tournaments.'
+          : 'Tap to view and accept.',
         link:    `/clubhouses/${ch.slug}`,
-        payload: { clubhouse_id: ch.id, clubhouse_slug: ch.slug },
+        payload: { clubhouse_id: ch.id, clubhouse_slug: ch.slug, role },
       });
-      return res.json({ ok: true, kind: 'existing_user' });
+      return res.json({ ok: true, kind: 'existing_user', role });
     }
 
     // ── 2b. No existing user — email invite. Send signup link.
@@ -305,7 +356,7 @@ async function inviteToClubhouse(req, res) {
 
     // Reuse pending invite for same (clubhouse, email) if one exists.
     const { rows: existing } = await db.query(
-      `SELECT id, token FROM clubhouse_email_invites
+      `SELECT id, token, role FROM clubhouse_email_invites
        WHERE clubhouse_id = $1 AND LOWER(email) = $2 AND accepted_at IS NULL`,
       [id, resolvedEmail]
     );
@@ -313,12 +364,17 @@ async function inviteToClubhouse(req, res) {
     let token;
     if (existing.length) {
       token = existing[0].token;
+      // Upgrade role if the inviter has changed it.
+      await db.query(
+        'UPDATE clubhouse_email_invites SET role = $1 WHERE id = $2',
+        [role, existing[0].id]
+      );
     } else {
       token = crypto.randomBytes(24).toString('hex');
       await db.query(
-        `INSERT INTO clubhouse_email_invites (clubhouse_id, email, token, invited_by)
-         VALUES ($1, $2, $3, $4)`,
-        [id, resolvedEmail, token, req.user.id]
+        `INSERT INTO clubhouse_email_invites (clubhouse_id, email, token, role, invited_by)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [id, resolvedEmail, token, role, req.user.id]
       );
     }
 

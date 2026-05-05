@@ -18,6 +18,8 @@ class ClubhouseModel {
   final bool isPublic;
   final bool isPublicCourse;
   final String? courseApiId;
+  /// 'owner' | 'staff' | null. Populated by the /clubhouses/mine listing.
+  final String? myRole;
 
   const ClubhouseModel({
     required this.id,
@@ -37,6 +39,7 @@ class ClubhouseModel {
     required this.isPublic,
     required this.isPublicCourse,
     this.courseApiId,
+    this.myRole,
   });
 
   String get locationLabel {
@@ -62,6 +65,7 @@ class ClubhouseModel {
         isPublic:        j['is_public'] != false,
         isPublicCourse:  j['is_public_course'] == true,
         courseApiId:     j['course_api_id'] as String?,
+        myRole:          j['my_role'] as String?,
       );
 }
 
@@ -70,17 +74,25 @@ class ClubhousePage {
   final List<TournamentModel> tournaments;
   /// 'member' | 'invited' | null
   final String? membershipStatus;
+  /// 'owner' | 'staff' | 'member' | null
+  final String? memberRole;
+  /// True if the current user can edit the clubhouse + post tournaments.
+  final bool canManage;
   final int memberCount;
 
   const ClubhousePage({
     required this.clubhouse,
     required this.tournaments,
     this.membershipStatus,
+    this.memberRole,
+    this.canManage = false,
     this.memberCount = 0,
   });
 
   bool get isMember  => membershipStatus == 'member';
   bool get isInvited => membershipStatus == 'invited';
+  bool get isOwner   => memberRole == 'owner';
+  bool get isStaff   => memberRole == 'staff';
 
   factory ClubhousePage.fromJson(Map<String, dynamic> j) => ClubhousePage(
         clubhouse:        ClubhouseModel.fromJson(j['clubhouse'] as Map<String, dynamic>),
@@ -88,6 +100,8 @@ class ClubhousePage {
                             .map((e) => TournamentModel.fromJson(e as Map<String, dynamic>))
                             .toList(),
         membershipStatus: j['membership_status'] as String?,
+        memberRole:       j['member_role'] as String?,
+        canManage:        j['can_manage'] == true,
         memberCount:      int.tryParse(j['member_count']?.toString() ?? '0') ?? 0,
       );
 }

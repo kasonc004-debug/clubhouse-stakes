@@ -48,8 +48,31 @@ class MyClubhousesScreen extends ConsumerWidget {
             itemBuilder: (_, i) {
               final ch = list[i];
               return ListTile(
-                title: Text(ch.name,
-                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                title: Row(children: [
+                  Flexible(
+                    child: Text(ch.name,
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            const TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                  if (ch.myRole == 'staff') ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFC9A84C).withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Text('STAFF',
+                          style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.5,
+                              color: Color(0xFFC9A84C))),
+                    ),
+                  ],
+                ]),
                 subtitle: Text(
                   '${ch.locationLabel.isEmpty ? '—' : ch.locationLabel} · '
                   '${ch.isPublic ? 'public' : 'private'}',
