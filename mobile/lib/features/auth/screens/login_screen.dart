@@ -201,22 +201,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                         const SizedBox(height: 22),
 
-                        // Sign In button
+                        // Sign In button — gold on dark
                         SizedBox(
                           width: double.infinity,
                           height: 54,
                           child: ElevatedButton(
                             onPressed: auth.loading ? null : _login,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primary,
-                              foregroundColor: Colors.white,
+                              backgroundColor: AppColors.gold,
+                              foregroundColor: AppColors.textOnAccent,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                               elevation: 0,
                             ),
                             child: auth.loading
                                 ? const SizedBox(
                                     width: 22, height: 22,
-                                    child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                                    child: CircularProgressIndicator(strokeWidth: 2.5, color: AppColors.textOnAccent),
                                   )
                                 : const Text(
                                     'SIGN IN',

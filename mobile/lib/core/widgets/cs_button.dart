@@ -21,11 +21,16 @@ class CSButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = color ?? AppColors.primary;
+    // Default button color flipped from brand-green to gold so primary
+    // CTAs remain readable on the dark theme.
+    final bgColor = color ?? AppColors.gold;
+    final fgColor = bgColor == AppColors.gold
+        ? AppColors.textOnAccent
+        : AppColors.textOnPrimary;
     final child = loading
-        ? const SizedBox(
+        ? SizedBox(
             width: 22, height: 22,
-            child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+            child: CircularProgressIndicator(strokeWidth: 2.5, color: fgColor),
           )
         : Row(
             mainAxisSize: MainAxisSize.min,
@@ -48,7 +53,10 @@ class CSButton extends StatelessWidget {
 
     return ElevatedButton(
       onPressed: loading ? null : onPressed,
-      style: ElevatedButton.styleFrom(backgroundColor: bgColor),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: bgColor,
+        foregroundColor: fgColor,
+      ),
       child: child,
     );
   }

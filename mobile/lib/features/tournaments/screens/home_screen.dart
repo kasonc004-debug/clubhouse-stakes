@@ -411,52 +411,55 @@ class _TabRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const tabs = ['UPCOMING', 'LIVE', 'MY EVENTS', 'PAST'];
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+    const tabs = ['Upcoming', 'Live', 'My events', 'Past'];
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppColors.glassFill(0.05),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: AppColors.glassBorder()),
+      ),
       child: Row(
         children: List.generate(tabs.length, (i) {
           final sel = i == selected;
           final isLive = i == 1;
-          return Padding(
-            padding: EdgeInsets.only(right: i < tabs.length - 1 ? 10 : 0),
+          return Expanded(
             child: GestureDetector(
               onTap: () => onTap(i),
+              behavior: HitTestBehavior.opaque,
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 20, vertical: 11),
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(vertical: 10),
                 decoration: BoxDecoration(
-                  color: sel
-                      ? (isLive ? AppColors.error : const Color(0xFF1B3D2C))
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(30),
-                  border: Border.all(
-                    color: sel
-                        ? (isLive ? AppColors.error : const Color(0xFF1B3D2C))
-                        : AppColors.divider,
-                    width: 1.5,
-                  ),
+                  color: sel ? Colors.white : Colors.transparent,
+                  borderRadius: BorderRadius.circular(24),
                 ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  if (isLive && !sel) ...[
-                    Container(
-                      width: 7,
-                      height: 7,
-                      decoration: const BoxDecoration(
-                          color: AppColors.error,
-                          shape: BoxShape.circle),
-                    ),
-                    const SizedBox(width: 6),
-                  ],
-                  Text(tabs[i],
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (isLive) ...[
+                      Container(
+                        width: 6, height: 6,
+                        decoration: BoxDecoration(
+                          color: sel ? AppColors.error : AppColors.error,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                    Text(
+                      tabs[i],
                       style: TextStyle(
-                        color: sel ? Colors.white : AppColors.textSecondary,
+                        color: sel
+                            ? AppColors.textOnAccent
+                            : AppColors.textSecondary,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        letterSpacing: 1.2,
-                      )),
-                ]),
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           );
